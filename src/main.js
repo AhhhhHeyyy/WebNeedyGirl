@@ -6,7 +6,7 @@ import { BaseImageLayer } from './layers/BaseImageLayer.js';
 import { BaseLottieLayer } from './layers/BaseLottieLayer.js';
 import { BaseIframeLayer } from './layers/BaseIframeLayer.js';
 import { GroupLayer } from './layers/GroupLayer.js';
-import { spawnNestedScene3Popup, clientToLogical, popupTuning } from './layers/nestedScene3PopupSpawner.js';
+import { spawnNestedScene3Popup, clientToLogical, popupTuning, prewarmRendererPool } from './layers/nestedScene3PopupSpawner.js';
 
 const STORAGE_KEY = 'needygirl-layer-layout';
 
@@ -17,10 +17,17 @@ const panelMount = document.getElementById('layer-panel-mount');
 const popupTuningMount = document.getElementById('popup-tuning-mount');
 const saveBtn = document.getElementById('layer-save-btn');
 const resetBtn = document.getElementById('layer-reset-btn');
+const loadingScreen = document.getElementById('loading-screen');
+const loadingPercent = document.getElementById('loading-percent');
 
 const stage = new Stage(pixiContainer);
 const manager = new LayerManager();
 window.__needyGirl = { stage, manager }; // dev-console debugging aid only
+
+// Pays the "spin up a WebGL context" cost for Nested Scene 3 pop-ups here,
+// while the loading screen is still up blocking input anyway, instead of on
+// whichever click(s) first need a renderer the pool doesn't have yet.
+prewarmRendererPool();
 
 // Every layer type owns a separate DOM/rendering context (iframe, Pixi
 // canvas, lottie-web canvas), so they can only stack as whole blocks, not
@@ -58,42 +65,68 @@ document.addEventListener('visibilitychange', () => {
 // carry its own Lottie files, and those get promoted to independent
 // top-level lottie layers instead of nesting (Lottie is a separate DOM
 // context, it can't be a child of the group's Pixi container).
+// BaseIframeLayer.create() (and every module's own `create()` that builds
+// on it — holographic/man/pixelCursor/retroFilter/stickerList) resolves the
+// instant the iframe element is created and its `src` is set, not once the
+// effect folder's own HTML/CSS/JS has actually finished loading inside it.
+// That's fine for the effect itself (it appears whenever it's ready,
+// nobody's blocked on it), but it means "this layer's promise resolved"
+// isn't the same as "this GPU-heavy self-contained subsystem is warm" — and
+// those are exactly the layers boot()'s loading screen exists to wait out.
+// Same-origin relative src (`UI/<folder>/index.html`) means contentDocument
+// is reachable, so a fast/cached iframe that's already done by the time we
+// get here is detected directly instead of waiting on a 'load' that already
+// fired and will never fire again.
+function waitForIframeReady(layer) {
+  if (!layer?.el || layer.el.tagName !== 'IFRAME') return Promise.resolve(layer);
+  if (layer.el.contentDocument?.readyState === 'complete') return Promise.resolve(layer);
+  return new Promise(resolve => layer.el.addEventListener('load', () => resolve(layer), { once: true }));
+}
+
 async function createLayer(kind, entry) {
+  let layers;
   if (entry.module) {
     const mod = await import(`./${entry.module}`);
     const container = kind === 'lottie' ? lottieContainer : kind === 'effect' ? bgContainer : undefined;
-    return [await mod.create({ ...entry, stage, container, manager })];
-  }
-  switch (kind) {
-    case 'effect':
-      return [await BaseIframeLayer.create({
-        id: entry.id, label: entry.label, src: `${entry.folder}/index.html`, container: bgContainer,
-      })];
-    case 'image':
-      return [await BaseImageLayer.create({
-        id: entry.id, label: entry.label, src: `UI/${entry.file}`, stage, x: 0, y: 0, scale: 1,
-      })];
-    case 'lottie':
-      return [await BaseLottieLayer.create({
-        id: entry.id, label: entry.label, src: `UI/${entry.file}`, container: lottieContainer,
-        stage, x: 0, y: 0, scale: 1, width: 512, height: 512,
-      })];
-    case 'group': {
-      const group = await GroupLayer.create({
-        id: entry.id, label: entry.label, stage, folder: entry.folder, images: entry.images,
-      });
-      const promotedLottie = await Promise.all((entry.lottie || []).map(le => BaseLottieLayer.create({
-        id: le.id, label: `${entry.label} / ${le.label}`, src: `${entry.folder}/${le.file}`,
-        container: lottieContainer, stage, x: 0, y: 0, scale: 1, width: 512, height: 512,
-        // Nested Scene 3 plays once per click (see boot()'s stage-area click
-        // handler below), not on a loop — hardcoded by id since it's the
-        // only Lottie asset in the project right now; manifest.json can't
-        // carry this itself, see the comment on the click handler.
-        loop: le.id !== 'dark.nestedScene3',
-      })));
-      return [group, ...promotedLottie];
+    layers = [await mod.create({ ...entry, stage, container, manager })];
+  } else {
+    switch (kind) {
+      case 'effect':
+        layers = [await BaseIframeLayer.create({
+          id: entry.id, label: entry.label, src: `${entry.folder}/index.html`, container: bgContainer,
+        })];
+        break;
+      case 'image':
+        layers = [await BaseImageLayer.create({
+          id: entry.id, label: entry.label, src: `UI/${entry.file}`, stage, x: 0, y: 0, scale: 1,
+        })];
+        break;
+      case 'lottie':
+        layers = [await BaseLottieLayer.create({
+          id: entry.id, label: entry.label, src: `UI/${entry.file}`, container: lottieContainer,
+          stage, x: 0, y: 0, scale: 1, width: 512, height: 512,
+        })];
+        break;
+      case 'group': {
+        const group = await GroupLayer.create({
+          id: entry.id, label: entry.label, stage, folder: entry.folder, images: entry.images,
+        });
+        const promotedLottie = await Promise.all((entry.lottie || []).map(le => BaseLottieLayer.create({
+          id: le.id, label: `${entry.label} / ${le.label}`, src: `${entry.folder}/${le.file}`,
+          container: lottieContainer, stage, x: 0, y: 0, scale: 1, width: 512, height: 512,
+          // Nested Scene 3 plays once per click (see boot()'s stage-area click
+          // handler below), not on a loop — hardcoded by id since it's the
+          // only Lottie asset in the project right now; manifest.json can't
+          // carry this itself, see the comment on the click handler.
+          loop: le.id !== 'dark.nestedScene3',
+        })));
+        layers = [group, ...promotedLottie];
+        break;
+      }
     }
   }
+  await Promise.all(layers.map(waitForIframeReady));
+  return layers;
 }
 
 let defaults = null; // captured once every layer has loaded; see boot()
@@ -123,6 +156,7 @@ async function boot() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     manifest = await res.json();
   } catch (err) {
+    loadingScreen?.remove(); // otherwise it'd sit at z-index 10000, above the error message
     showBootError(
       `找不到或讀不到 manifest.json（${err.message}）\n\n` +
       `檢查專案根目錄下是否有 manifest.json，\n` +
@@ -131,9 +165,12 @@ async function boot() {
     throw err;
   }
 
-  // Show the panel immediately and let rows pop in as each asset finishes
-  // loading, rather than blocking on the slowest one — a large animated GIF
-  // can take several seconds to decode, and shouldn't freeze the whole page.
+  // Build the panel now and let rows pop in as each asset finishes loading,
+  // rather than blocking construction on the slowest one — a large animated
+  // GIF can take several seconds to decode. None of this is visible yet
+  // either way: #loading-screen sits on top of the whole viewport-root until
+  // the very end of boot(), so "pop in progressively" only means "don't
+  // stall the JS below," not anything the user actually sees happen.
   new LayerPanel({ mountEl: panelMount, layerManager: manager });
   new PopupTuningPanel({
     mountEl: popupTuningMount, popupTuning,
@@ -158,11 +195,42 @@ async function boot() {
     ...(manifest.groups || []).map(entry => ({ kind: 'group', entry })),
   ];
 
+  // #loading-screen stays up (and, being the topmost fixed element, blocks
+  // every pointer event on the scene) for this entire Promise.all, so the
+  // percentage below is the only thing users see move until the scene is
+  // fully warmed up — see the "hide the loading screen" step at the end of
+  // boot() for why that's later than this Promise.all resolving.
+  let loadedCount = 0;
+  const reportProgress = () => {
+    loadedCount++;
+    if (loadingPercent) {
+      const pct = requests.length ? Math.round((loadedCount / requests.length) * 100) : 100;
+      loadingPercent.textContent = `${pct}%`;
+    }
+  };
+
   await Promise.all(requests.map(({ kind, entry }) =>
     createLayer(kind, entry)
       .then(layers => layers.forEach(l => manager.add(l)))
       .catch(err => console.error(`Failed to load layer "${entry.id}":`, err))
+      .finally(reportProgress)
   ));
+
+  // Nested Scene 3 (and every pop-up spawned from its template, see
+  // nestedScene3PopupSpawner.js) must always render behind Stickerboard
+  // (listStickers) — Lottie lives in its own DOM layer stacked as a whole
+  // above/below the ENTIRE Pixi canvas (see reconcileZIndex above), so what
+  // actually matters is only "is dark.nestedScene3 the frontmost tracked
+  // layer or not", not its distance from listStickers specifically. But
+  // Promise.all above resolves each layer whenever its own fetch/decode
+  // finishes, not in manifest order, so without pinning this explicitly a
+  // slow-loading Nested Scene 3.json could occasionally land last and flip
+  // the whole Lottie layer in front of everything, listStickers included.
+  const boardIdx = manager.layers.findIndex(l => l.id === 'listStickers');
+  const ns3Idx = manager.layers.findIndex(l => l.id === 'dark.nestedScene3');
+  if (boardIdx !== -1 && ns3Idx !== -1) {
+    manager.reorder('dark.nestedScene3', ns3Idx < boardIdx ? boardIdx - 1 : boardIdx);
+  }
 
   // Every animated GIF starts playing the moment its own load resolves, so
   // GIFs that finish decoding at slightly different times drift out of phase
@@ -234,6 +302,27 @@ async function boot() {
       manLayer.el.contentWindow?.postMessage({ type: 'ng-man-show', x: px, y: py }, window.location.origin);
     }
   });
+
+  // Even once every layer is in and frame-synced, the very first moments of
+  // everything actually animating at once (every idle GIF/Lottie/Spine loop
+  // starting cold, plus the GC pressure from however many textures/sprites
+  // boot() just allocated) are measurably janky for a bit — profiling this
+  // showed a burst of 100-300ms main-thread tasks for roughly a second-plus
+  // right after input would otherwise unblock, tapering off from there. A
+  // short fixed pause here — screen's already up, so it's not adding a new
+  // wait the user would notice as separate — lets that initial settle happen
+  // BEHIND the loading screen instead of during the user's actual first click.
+  await new Promise((r) => setTimeout(r, 600));
+
+  // Only now — after every layer is in, GIFs/animations are frame-synced,
+  // the saved layout is restored, and that initial settle pause above has
+  // elapsed — is the very first click guaranteed not to land on something
+  // still decoding or still mid-warm-up, so this is the point it's safe to
+  // let go of the input-blocking loading screen.
+  if (loadingScreen) {
+    loadingScreen.classList.add('hidden');
+    loadingScreen.addEventListener('transitionend', () => loadingScreen.remove(), { once: true });
+  }
 }
 
 boot().catch(err => console.error('Layer init failed:', err));

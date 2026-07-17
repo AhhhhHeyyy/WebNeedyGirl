@@ -108,9 +108,22 @@ function popupOpenProgress(frame) {
 // context — and doing it on the critical "click -> window opens" path was
 // visible as the whole page hitching for a moment right before every
 // pop-up appeared. Borrowing an idle renderer (just resizing it, cheap) and
-// returning it when the pop-up closes moves that one-time cost to the
-// first-ever pop-up of the session instead of paying it on every single one.
+// returning it when the pop-up closes avoids paying that cost on every
+// single pop-up — but with the pool starting empty, it still landed on
+// whichever pop-up(s) were first to ever need one. If several pop-ups are
+// opened close together before any of the earlier ones have finished (and
+// released their renderer back), each concurrent one beyond however many
+// are already sitting in the pool still pays full construction cost right
+// then. prewarmRendererPool() (called once from main.js's boot(), while the
+// loading screen is still up and blocking input anyway) front-loads that
+// cost so it lands during boot instead of during actual clicking.
 const rendererPool = [];
+
+export function prewarmRendererPool(count = 2) {
+  for (let i = 0; i < count; i++) {
+    rendererPool.push(new PIXI.Renderer({ antialias: true, backgroundAlpha: 1 }));
+  }
+}
 
 function acquireRenderer(pxW, pxH) {
   const renderer = rendererPool.pop() ?? new PIXI.Renderer({ antialias: true, backgroundAlpha: 1 });
