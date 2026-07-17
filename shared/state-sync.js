@@ -6,19 +6,39 @@
    which any such instance shares regardless of port — no manual
    copy-paste between them needed.
 
-   Falls back to localStorage alone if the server doesn't expose
-   /api/state (opened via file://, or served by a plain static-file tool
-   with no way to persist writes) — the try/catch below just leaves
-   `cache` empty in that case, and get() already falls through to
-   localStorage per key. */
+   Falls back to fetching the committed state.json directly (read-only) if
+   /api/state isn't there — e.g. deployed to a static host like Netlify —
+   so the last locally-saved layout still ships as everyone else's default.
+   Writes (set/remove) still always mirror into this visitor's own
+   localStorage regardless of which fallback applies, since that's the one
+   persistence path that works everywhere. */
 window.NeedyGirlState = (function () {
   let cache = {};
+  let haveServerBackend = false;
   try {
     const xhr = new XMLHttpRequest();
     xhr.open('GET', '/api/state', false); // sync — tiny local JSON, once per page load
     xhr.send(null);
-    if (xhr.status === 200) cache = JSON.parse(xhr.responseText);
+    if (xhr.status === 200) { cache = JSON.parse(xhr.responseText); haveServerBackend = true; }
   } catch (e) { /* no /api/state support */ }
+
+  // Static hosts (Netlify, etc.) have no /api/state endpoint to hit — the
+  // request above just 404s and haveServerBackend stays false. Falling back
+  // to fetching the committed state.json itself (shipped as an ordinary
+  // static file at the project root) is what makes the last locally-saved
+  // layout the DEFAULT visitors see there too, instead of every layer
+  // silently reverting to its raw as-loaded position. Writes (Save
+  // Layout/effect settings) still only land in that visitor's own
+  // localStorage on a static host — there's no server left to persist a
+  // POST to — but the shipped starting layout is what matters here.
+  if (!haveServerBackend) {
+    try {
+      const xhr2 = new XMLHttpRequest();
+      xhr2.open('GET', 'state.json', false);
+      xhr2.send(null);
+      if (xhr2.status === 200) cache = JSON.parse(xhr2.responseText);
+    } catch (e) { /* state.json not reachable either */ }
+  }
 
   // Slider drags fire many 'input' events per second; debounce the actual
   // network write so dragging doesn't hammer the server with a POST (and a

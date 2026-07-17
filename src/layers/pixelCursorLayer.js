@@ -7,6 +7,13 @@ import { BaseIframeLayer } from './BaseIframeLayer.js';
 // over that filter too.
 const FRONTMOST_Z = 27; // above retroFilterLayer's 25, lottie's 20, pixi's 10
 
+// Same <=1024 "mobile/tablet" cutoff used for the layer panel (index.html)
+// and the render-resolution cap (shared/device-perf.js). The custom pixel
+// cursor is a stand-in for a real OS mouse pointer — there's no mouse to
+// stand in for on a touchscreen, and forwarding touchmove into it just makes
+// it visibly chase the finger during drags, so it stays hidden there.
+const MOBILE_MAX_WIDTH = 1024;
+
 export class PixelCursorLayer extends BaseIframeLayer {
   constructor(opts) {
     super(opts);
@@ -18,6 +25,7 @@ export class PixelCursorLayer extends BaseIframeLayer {
     // and forwarded in (mirrors holographicLayer.js's _forwardPointer).
     this.el.style.pointerEvents = 'none';
     this._panelOpen = false;
+    this._isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
 
     this._onPointerMove = (e) => this._forwardPointer(e);
     window.addEventListener('pointermove', this._onPointerMove);
@@ -44,10 +52,28 @@ export class PixelCursorLayer extends BaseIframeLayer {
       this.el.contentWindow.postMessage({ type: 'ng-pixelCursor-toggle' }, window.location.origin);
     };
     this.el.parentElement.appendChild(this.toggleBtn);
+
+    // Viewport width can change (window resize, or a tablet flipping
+    // orientation) without a page reload, so this is re-checked live rather
+    // than only once at construction.
+    this._onResize = () => this._applyMobileState();
+    window.addEventListener('resize', this._onResize);
+    this._applyMobileState();
+  }
+
+  // `this.visible` (set via setVisible, e.g. the layer panel's checkbox)
+  // stays the user's own on/off intent regardless of viewport size — mobile
+  // just forces the on-screen result to hidden without touching that intent,
+  // so resizing back to desktop restores whatever the user had chosen.
+  _applyMobileState() {
+    this._isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
+    const shouldShow = this.visible && !this._isMobile;
+    this.el.style.display = shouldShow ? 'block' : 'none';
+    this.toggleBtn.style.display = shouldShow ? 'block' : 'none';
   }
 
   _forwardPointer(e) {
-    if (!this.visible || !this.el.contentWindow) return;
+    if (!this.visible || this._isMobile || !this.el.contentWindow) return;
     const rect = this.el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
@@ -82,7 +108,7 @@ export class PixelCursorLayer extends BaseIframeLayer {
 
   setVisible(visible) {
     super.setVisible(visible);
-    this.toggleBtn.style.display = visible ? 'block' : 'none';
+    this._applyMobileState(); // re-asserts display:none on mobile even though the base class just set 'block'
     if (!visible) {
       this._panelOpen = false;
       this.el.style.pointerEvents = 'none';
@@ -98,6 +124,7 @@ export class PixelCursorLayer extends BaseIframeLayer {
     if ('onpointerrawupdate' in window) {
       window.removeEventListener('pointerrawupdate', this._onPointerMove);
     }
+    window.removeEventListener('resize', this._onResize);
     this.toggleBtn.remove();
     super.destroy();
   }
