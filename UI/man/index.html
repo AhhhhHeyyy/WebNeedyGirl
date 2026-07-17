@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Man Popup</title>
+<script src="../../shared/state-sync.js"></script>
+<link rel="stylesheet" href="../../shared/panel.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<img id="man-img" src="man2.png" alt="">
+
+<button id="panel-toggle" title="Controls">⚙</button>
+
+<div id="panel" class="closed">
+  <div class="sec">Timing</div>
+  <div class="sg" id="sg-showtime"></div>
+
+  <div class="div"></div>
+
+  <div class="sec">Look</div>
+  <div class="sg" id="sg-size"></div>
+  <div class="sg" id="sg-opacity"></div>
+
+  <div class="div"></div>
+
+  <div class="btn-row">
+    <button class="pbtn" id="reset-btn">↺ Reset</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

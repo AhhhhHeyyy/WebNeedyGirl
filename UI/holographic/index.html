@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Radiating Holographic</title>
+<script src="../../shared/device-perf.js"></script>
+<script src="../../shared/state-sync.js"></script>
+<link rel="stylesheet" href="../../shared/panel.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="retro"></div>   <!-- scan line overlay -->
+<div id="cf"></div>      <!-- colour filter overlay -->
+
+<button id="panel-toggle" title="Controls">⚙</button>
+
+<div id="panel" class="closed">
+
+  <!-- ── Motion ── -->
+  <div class="sec">Motion</div>
+  <div class="sg" id="sg-speed"></div>
+  <div class="sg" id="sg-steps"></div>
+  <div class="sg" id="sg-ring"></div>
+
+  <div class="div"></div>
+
+  <!-- ── Shape ── -->
+  <div class="sec">Shape</div>
+  <div class="sg" id="sg-ncen"></div>
+  <div class="sg" id="sg-warp"></div>
+  <div class="sg" id="sg-damp"></div>
+  <div class="sg" id="sg-dspd"></div>
+
+  <div class="div"></div>
+
+  <!-- ── Color ── -->
+  <div class="sec">Color</div>
+  <!-- vortex base colour picker -->
+  <div class="color-row">
+    <span class="sg-label">Base Color</span>
+    <label class="cpick-wrap" title="Vortex base color">
+      <input type="color" id="vortex-color" value="#D1CCDE">
+    </label>
+  </div>
+  <div class="sg" id="sg-hue"></div>
+  <div class="sg" id="sg-vig"></div>
+
+  <div class="div"></div>
+
+  <!-- ── Sparkle ── -->
+  <div class="sec">Sparkle</div>
+  <div class="sg" id="sg-ssize"></div>
+  <div class="sg" id="sg-srate"></div>
+
+  <div class="div"></div>
+
+  <!-- ── Overlays ── -->
+  <div class="sec">Overlays</div>
+
+  <!-- scan line -->
+  <div class="ov-block">
+    <div class="ov-head">
+      <button class="pbtn on" id="retro-btn">▦ Scanline</button>
+      <label class="cpick-wrap" title="Scanline color">
+        <input type="color" id="retro-color" value="#ffffff">
+      </label>
+      <span class="sg-val" id="retro-pct">11%</span>
+    </div>
+    <div class="sg-track">
+      <input type="range" id="retro-opa" min="0" max="0.5" step="0.01" value="0.11">
+      <div class="max-wrap">
+        <span class="max-lbl">max</span>
+        <input type="number" class="max-inp" id="retro-opa-max" value="0.5" step="0.01">
+      </div>
+    </div>
+  </div>
+
+  <!-- colour filter -->
+  <div class="ov-block" style="margin-top:12px">
+    <div class="ov-head">
+      <button class="pbtn on" id="cf-btn">◐ Filter</button>
+      <label class="cpick-wrap" title="Filter color">
+        <input type="color" id="cf-color" value="#ffb8ce">
+      </label>
+      <span class="sg-val" id="cf-pct">15%</span>
+    </div>
+    <div class="sg-track">
+      <input type="range" id="cf-opa" min="0" max="0.5" step="0.01" value="0.15">
+      <div class="max-wrap">
+        <span class="max-lbl">max</span>
+        <input type="number" class="max-inp" id="cf-opa-max" value="0.5" step="0.01">
+      </div>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <div class="btn-row">
+    <button class="pbtn on" id="sparkle-btn">✦ Sparkle</button>
+    <button class="pbtn" id="save-btn">↓ Save</button>
+  </div>
+  <div class="btn-row">
+    <button class="pbtn" id="reset-btn">↺ Reset</button>
+  </div>
+</div>
+
+<div id="hint">Mouse / Touch = ripple center</div>
+
+<script src="script.js"></script>
+</body>
+</html>

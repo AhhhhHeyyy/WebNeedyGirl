@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>__EFFECT_TITLE__</title>
+<!-- Only needed if this effect renders to a <canvas> (Canvas2D/WebGL) and
+     wants a device-pixel-ratio cap on mobile — delete if pure CSS/DOM. -->
+<script src="../../shared/device-perf.js"></script>
+<!-- Only needed if this effect has a tunable panel whose settings persist
+     across reloads — delete both this and shared/panel.css below if the
+     effect ships with baked, non-interactive constants instead
+     (see UI/checkerboard for that pattern). -->
+<script src="../../shared/state-sync.js"></script>
+<link rel="stylesheet" href="../../shared/panel.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- Swap for whatever the effect actually draws into — <canvas id="gl">
+     for Canvas2D/WebGL, or plain <div>s for a CSS/DOM-driven effect
+     (see UI/checkerboard/index.html). -->
+<canvas id="gl"></canvas>
+
+<button id="panel-toggle" title="Controls">⚙</button>
+
+<div id="panel" class="closed">
+  <div class="sec">__SECTION_NAME__</div>
+  <div class="sg" id="sg-example"></div>
+
+  <div class="div"></div>
+
+  <div class="btn-row">
+    <button class="pbtn" id="reset-btn">↺ Reset</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+body { background-color: #f2eefe; }
+
+/* ── Drift ── pure CSS @keyframes (no JS driving it every frame) so the
+   compositor thread handles the endless pan on its own, independent of the
+   main thread. Split into two nested wrappers, one per axis, because a
+   single element can't run two independent-period `transform` animations
+   at once (the drift's x-period and y-period differ unless angle is
+   exactly 45°) — animation-duration and the --dx/--dy end value are set
+   once at init in script.js from CELL/COUNT/SPEED/ANGLE, never touched
+   again. Shared by the base tile, the color-shift layers, and every glitch
+   band (each gets its own wrapper pair, all using the same two keyframes). */
+@keyframes cb-drift-x { from { transform: translateX(0); } to { transform: translateX(var(--dx)); } }
+@keyframes cb-drift-y { from { transform: translateY(0); } to { transform: translateY(var(--dy)); } }
+.drift-x, .drift-y { position: absolute; inset: 0; animation-timing-function: linear; animation-iteration-count: infinite; }
+.drift-x { animation-name: cb-drift-x; }
+.drift-y { animation-name: cb-drift-y; }
+/* Set by script.js on the ng-effect-pause/resume messages from
+   BaseIframeLayer — display:none (also applied by that same message)
+   already stops these from painting, but pausing the timeline too avoids
+   it ticking/costing anything in a hidden iframe that keeps running JS. */
+html.ng-paused .drift-x, html.ng-paused .drift-y, html.ng-paused #glitch-scan { animation-play-state: paused; }
+
+/* The checkerboard pattern lives on #cb-tile's background-image, built once
+   in script.js from the baked colors/grid. #cb-tile is sized one tile
+   larger than the viewport on every side (inline left/top/width/height,
+   set once in script.js) and its parent .drift-x/.drift-y wrappers carry
+   the endless pan — #cb-base just clips that oversized tile back down to
+   the viewport box. */
+#cb-base { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+#cb-tile { position: absolute; background-repeat: repeat; }
+
+/* ── Color-shift fringe ── used to be two extra `mix-blend-mode: screen`
+   copies of the tile (pink + cyan) live-blended over #cb-tile; now baked
+   directly into #cb-tile's own background image once at init (see
+   buildCompositeTile() in script.js) since their offset from the base tile
+   is constant and never animates on its own. */
+
+/* ── Glitch overlay ── the periodic noise/jolt (random band clip + RGB
+   channel offsets) is still JS-driven (script.js) since it needs genuine
+   randomness — but it now only ever writes a small per-band transform +
+   clip-path, never the drift itself (that's the shared .drift-x/.drift-y
+   wrappers above). .glitch-band elements each mirror body's checkerboard
+   background (same image/size/position) and are continuously clipped to a
+   thin band + shoved sideways by a small amount — how many of the 4 are
+   active at once is baked as G.bandCount. #glitch-r/g/b are flat neon rects
+   screen-blended on top, continuously nudged in opposite directions for a
+   chromatic-aberration fringe. Every few seconds a bigger "jolt" (skew +
+   rotate kick) briefly stacks on top of the continuous jitter. */
+#glitch { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+#glitch-r, #glitch-g, #glitch-b { position: absolute; inset: -2% -8%; }
+/* left/top/width/height set inline in script.js (oversized box, same
+   reasoning as #cb-tile), nested inside its own .drift-x/.drift-y pair. */
+.glitch-band { position: absolute; background-repeat: repeat; clip-path: inset(0 0 100% 0); }
+#glitch-r, #glitch-g, #glitch-b { mix-blend-mode: screen; opacity: 0; }
+#glitch-r { background: #ff2a4d; }
+#glitch-g { background: #21ffa0; }
+#glitch-b { background: #29c8ff; }
+
+/* ── Scanlines ── plain CSS loop; difference-blended so it reads as a faint
+   horizontal texture over any underlying color instead of a flat tint.
+   Opacity is baked via the --scan-op custom property (set once in
+   script.js). */
+#glitch-scan {
+  position: absolute; inset: 0;
+  mix-blend-mode: difference;
+  background: repeating-linear-gradient(to bottom,
+    transparent 0%, rgba(255,255,255,var(--scan-op, 0.05)) 0.5%, transparent 1%);
+  animation: glitch-scan-drift 7s ease-in-out infinite alternate;
+}
+@keyframes glitch-scan-drift {
+  from { transform: translateY(0); }
+  to   { transform: translateY(2%); }
+}

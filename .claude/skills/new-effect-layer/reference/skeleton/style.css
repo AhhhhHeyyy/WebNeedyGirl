@@ -1,0 +1,6 @@
+/* shared/panel.css already supplies the panel/slider/button chrome shared by
+   every effect and the root composition — only put THIS effect's own visual
+   styling here (canvas background, overlay divs, keyframes, ...). */
+
+html, body { background: #000; } /* swap for the effect's own base color */
+#gl { display: block; width: 100vw; height: 100vh; touch-action: none; }

@@ -1,0 +1,179 @@
+{
+  "images": [
+    {
+      "id": "frame1",
+      "label": "Frame 1",
+      "file": "Frame 1.png"
+    },
+    {
+      "id": "frame1B",
+      "label": "Frame 1_B",
+      "file": "Frame 1_B.png"
+    },
+    {
+      "id": "listStickers",
+      "label": "List-stickers",
+      "file": "list-stickers.png",
+      "module": "layers/listStickersLayer.js"
+    },
+    {
+      "id": "spineAngelASpine",
+      "label": "SpineAngel_A.spine",
+      "file": "spineAngel/skeleton.json",
+      "skin": "Angel",
+      "module": "layers/spineAngelASpineLayer.js"
+    },
+    {
+      "id": "spineAngelDSpine",
+      "label": "SpineAngel_D.spine",
+      "file": "spineAngel/skeleton.json",
+      "skin": "dark",
+      "module": "layers/spineAngelDSpineLayer.js"
+    }
+  ],
+  "lottie": [],
+  "effects": [
+    {
+      "id": "checkerboard",
+      "label": "Checkerboard",
+      "folder": "UI/checkerboard"
+    },
+    {
+      "id": "holographic",
+      "label": "Holographic",
+      "folder": "UI/holographic",
+      "module": "layers/holographicLayer.js"
+    },
+    {
+      "id": "man",
+      "label": "Man",
+      "folder": "UI/man",
+      "module": "layers/manLayer.js"
+    },
+    {
+      "id": "pixelCursor",
+      "label": "PixelCursor",
+      "folder": "UI/pixelCursor",
+      "module": "layers/pixelCursorLayer.js"
+    },
+    {
+      "id": "retroFilter",
+      "label": "RetroFilter",
+      "folder": "UI/retroFilter",
+      "module": "layers/retroFilterLayer.js"
+    },
+    {
+      "id": "stickerList",
+      "label": "StickerList",
+      "folder": "UI/stickerList",
+      "module": "layers/stickerListLayer.js"
+    }
+  ],
+  "groups": [
+    {
+      "id": "chat",
+      "label": "Chat",
+      "folder": "UI/chat",
+      "images": [
+        {
+          "id": "chat.chatB",
+          "label": "ChatB",
+          "file": "ChatB.png",
+          "module": "layers/chat.chatBLayer.js"
+        },
+        {
+          "id": "chat.chatboard",
+          "label": "Chatboard",
+          "file": "Chatboard.png",
+          "module": "layers/chat.chatboardLayer.js"
+        }
+      ],
+      "lottie": []
+    },
+    {
+      "id": "dark",
+      "label": "Dark",
+      "folder": "UI/Dark",
+      "images": [
+        {
+          "id": "dark.dark",
+          "label": "Dark",
+          "file": "dark.png"
+        }
+      ],
+      "lottie": [
+        {
+          "id": "dark.nestedScene3",
+          "label": "Nested Scene 3",
+          "file": "Nested Scene 3.json"
+        }
+      ]
+    },
+    {
+      "id": "eye",
+      "label": "Eye",
+      "folder": "UI/eye",
+      "images": [
+        {
+          "id": "eye.eye",
+          "label": "Eye",
+          "file": "eye.png",
+          "module": "layers/eye.eyeLayer.js"
+        }
+      ],
+      "lottie": []
+    },
+    {
+      "id": "heading",
+      "label": "Heading",
+      "folder": "UI/heading",
+      "images": [
+        {
+          "id": "heading.boarding",
+          "label": "Boarding",
+          "file": "boarding.png",
+          "module": "layers/heading.boardingLayer.js"
+        },
+        {
+          "id": "heading.button",
+          "label": "Button",
+          "file": "button.png",
+          "module": "layers/heading.buttonLayer.js"
+        },
+        {
+          "id": "heading.heading3",
+          "label": "Heading-3",
+          "file": "heading-3.png",
+          "module": "layers/heading.heading3Layer.js"
+        },
+        {
+          "id": "heading.heading",
+          "label": "Heading",
+          "file": "heading.png",
+          "module": "layers/heading.headingLayer.js"
+        }
+      ],
+      "lottie": []
+    },
+    {
+      "id": "live",
+      "label": "Live",
+      "folder": "UI/Live",
+      "images": [
+        {
+          "id": "live.3Line",
+          "label": "3 line",
+          "file": "3 line.png",
+          "module": "layers/live.3LineLayer.js"
+        },
+        {
+          "id": "live.searchBar",
+          "label": "Search bar",
+          "file": "search bar.png",
+          "module": "layers/live.searchBarLayer.js"
+        }
+      ],
+      "lottie": []
+    }
+  ]
+}

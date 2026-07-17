@@ -1,0 +1,31 @@
+/* shared/panel.css already supplies the panel/slider/button chrome — only
+   this effect's own canvas/color-input styling lives here. */
+
+/* cursor:none here is the standalone-page equivalent of the parent
+   compositor's #stage-area rule (see the top-level index.html) — when this
+   effect is embedded via pixelCursorLayer.js, that outer rule already hides
+   the real OS pointer, but opening this page directly (e.g. for testing)
+   has no such outer page, so without this the system arrow and the custom
+   cursor show at the same time. #panel opts back into a normal, usable
+   pointer for the same reason the parent excludes its own sidebar. */
+html, body { background: transparent; cursor: none; }
+#panel-toggle, #panel { cursor: auto; }
+#gl { display: block; width: 100vw; height: 100vh; touch-action: none; }
+
+/* The live cursor itself — position updates land here as a CSS transform,
+   not a canvas redraw, so the compositor can just move an already-rasterized
+   layer instead of the browser having to repaint/recomposite anything on
+   every pointer event. */
+#cursor-sprite {
+  position: fixed; top: 0; left: 0; pointer-events: none;
+  image-rendering: pixelated; will-change: transform; display: none;
+}
+
+input[type=color] {
+  width: 100%; height: 26px; border: none; border-radius: 6px; cursor: pointer;
+  background: rgba(255,255,255,0.52); padding: 2px;
+}
+
+input[type=checkbox] {
+  width: 16px; height: 16px; cursor: pointer; accent-color: #c8b8f2;
+}

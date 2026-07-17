@@ -1,0 +1,60 @@
+html, body { background: #cdd2f0; }
+#gl { display: block; width: 100vw; height: 100vh; touch-action: none; }
+
+/* ── Overlays ── */
+#retro, #cf {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; transition: opacity .3s;
+}
+#retro { z-index: 7; }
+#cf    { z-index: 8; }
+#retro.off, #cf.off { opacity: 0; }
+
+/* ── Max / number input ── */
+.max-wrap { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.max-lbl { font-size: 9.5px; color: #baaad2; }
+input.max-inp {
+  width: 40px; border-radius: 6px; border: 1px solid rgba(198,178,238,0.52);
+  background: rgba(255,255,255,0.56); padding: 2px 4px;
+  font-size: 10.5px; color: #806898; text-align: center; outline: none; font-family: inherit;
+}
+input.max-inp:focus { border-color: rgba(175,142,228,0.82); background: rgba(255,255,255,0.88); }
+input.max-inp::-webkit-outer-spin-button,
+input.max-inp::-webkit-inner-spin-button { -webkit-appearance: none; }
+input.max-inp[type=number] { -moz-appearance: textfield; }
+
+/* ── Color picker ── */
+.cpick-wrap {
+  flex-shrink: 0; width: 30px; height: 22px; border-radius: 7px; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(160,128,205,0.32), inset 0 0 0 1px rgba(255,255,255,0.75);
+  cursor: pointer; display: block;
+}
+input[type=color] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 100%; border: none; cursor: pointer; padding: 0; background: none;
+}
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type=color]::-webkit-color-swatch { border: none; }
+
+/* ── Overlay block (scan line / filter) ── */
+.ov-block { margin-bottom: 4px; }
+.ov-head  { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.ov-head .pbtn { flex: 1; padding: 6px 8px; font-size: 11px; }
+
+/* ── Color-row (single-line label + picker) ── */
+.color-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 13px;
+}
+
+/* ── Hint ── */
+#hint {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  padding: 7px 20px; border-radius: 999px; white-space: nowrap;
+  background: rgba(255,215,235,0.46);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(160,128,205,0.2), inset 0 0 0 1px rgba(255,255,255,0.68);
+  font-family: -apple-system, "PingFang TC", system-ui, sans-serif;
+  font-size: 12px; color: #9080b8; pointer-events: none; transition: opacity .4s;
+}
+#hint.hidden { opacity: 0; }

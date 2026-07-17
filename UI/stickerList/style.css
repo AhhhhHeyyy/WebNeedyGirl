@@ -1,0 +1,146 @@
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  /* Full-viewport iframe (see stickerListLayer.js) so a clicked sticker's
+     falling clone can travel all the way off the bottom of the actual
+     screen, not just off the small board it was clicked from. The iframe
+     element itself stays pointer-events:none in the parent document (real
+     hover/click on the 5 icons is driven by real DOM elements the parent
+     lays on top of it instead — see stickerListLayer.js for why), so
+     nothing in here needs to be interactive at all; this is a pure display
+     surface reacting to postMessage. */
+  pointer-events: none;
+}
+
+/* Positioned/sized via inline left/top/width/height, pushed in from the
+   parent frame (stickerListLayer.js's _reposition(), postMessage
+   'ng-stickerlist-position') to track the "listStickers" board's live
+   on-screen box — same idea as holographicLayer.js's mask-to-target-sprite,
+   just delivered as numbers instead of a CSS mask since this iframe can't
+   be confined to that box itself. */
+#sticker-list {
+  position: absolute;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+#sticker-list.positioned { opacity: 1; }
+
+/* Padding lives on this plain in-flow child, not on #sticker-list itself —
+   percentage padding always resolves against the WIDTH of an element's own
+   containing block, and for an absolutely-positioned element that's the
+   iframe's full body box, not its own left/top/width/height box. Nesting
+   a normal-flow div that just fills its parent (100%/100%) gives the
+   padding percentages the right box (this element's own, matching its
+   absolutely-positioned parent's size) to resolve against instead. */
+#sticker-row {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  /* Asymmetric left/right padding (was even 6%/6%) nudges the whole row of
+     5 icons left within the board's fixed box — space-evenly still spaces
+     them out evenly, just within a region shifted toward the left edge. */
+  padding: 11% 9% 11% 3%;
+}
+
+.sticker-item {
+  position: relative;
+  flex: 0 0 auto;
+  width: 17%;
+  aspect-ratio: 1 / 1;
+  pointer-events: none;
+  /* Hidden until the board has actually finished popping open — script.js's
+     pulseOpen()/pulseClose() (driven by stickerListLayer.js's 'ng-
+     stickerlist-open'/-close messages) toggle .entered on each icon in
+     turn, left-to-right, instead of every icon just sitting there
+     pre-rendered under a closed board. */
+  opacity: 0;
+  transform: scale(0.3);
+  transition: opacity 0.14s ease, transform 0.22s cubic-bezier(.34,1.56,.64,1);
+}
+.sticker-item.entered {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.sticker-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+  transform-origin: 50% 50%;
+  transition: transform 0.28s cubic-bezier(.34,1.56,.64,1);
+  pointer-events: none;
+}
+/* .hovering is toggled by script.js on 'ng-stickerlist-hover' messages from
+   the parent — real hover is detected in the parent document (a window-
+   level pointermove hit-tested against this icon's last-reported rect, see
+   stickerListLayer.js), not in here, so this can't be a plain CSS :hover. */
+.sticker-item.hovering .sticker-img {
+  transform: scale(1.22) rotate(var(--hover-rot, 8deg));
+}
+
+/* Semi-transparent rainbow-gradient filter, masked to the sticker's own
+   painted pixels (mask-image set per-item in script.js) so it reads as a
+   tint riding on the artwork instead of a hard-edged rainbow square sitting
+   over its transparent PNG margins. Gradient/keyframe values are the CSS
+   translation of the reference `rainbow()` SCSS mixin (repeating-linear-
+   gradient across the 6 hues, sliding along its own background-position). */
+.sticker-rainbow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-size: contain;
+  -webkit-mask-size: contain;
+  mask-position: center;
+  -webkit-mask-position: center;
+  background: repeating-linear-gradient(
+    -45deg,
+    red 0%, yellow 7.14%, rgb(0,255,0) 14.28%, rgb(0,255,255) 21.42%,
+    cyan 28.56%, blue 35.7%, magenta 42.84%, red 50%
+  );
+  background-size: 600% 600%;
+  animation: sl-rainbow-slide 6s linear infinite;
+  transition: opacity 0.22s ease;
+}
+.sticker-item.hovering .sticker-rainbow { opacity: 0.55; }
+
+@keyframes sl-rainbow-slide {
+  from { background-position: 0% 0%; }
+  to   { background-position: 600% 0%; }
+}
+
+/* Paused by BaseIframeLayer's ng-effect-pause/resume bridge (see
+   script.js) — the rainbow slide is a plain CSS animation, so it's
+   stopped the same way checkerboard/style.css pauses its own drift. */
+html.ng-paused .sticker-rainbow { animation-play-state: paused; }
+
+/* Clicked-sticker clones (script.js's spawnClone/physics loop) — a plain
+   full-viewport layer, never clipped to the board's own box, positioned
+   purely via each clone's own translate()/rotate() transform. */
+#clones-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+.sticker-clone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+}

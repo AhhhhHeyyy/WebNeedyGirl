@@ -1,0 +1,298 @@
+
+skeleton.png
+size: 2048,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Angel/eye
+  rotate: false
+  xy: 504, 1780
+  size: 209, 155
+  orig: 209, 155
+  offset: 0, 0
+  index: -1
+Angel/face
+  rotate: true
+  xy: 1722, 1690
+  size: 245, 251
+  orig: 246, 251
+  offset: 0, 0
+  index: -1
+Angel/hair b
+  rotate: false
+  xy: 773, 137
+  size: 400, 394
+  orig: 656, 426
+  offset: 0, 32
+  index: -1
+Angel/hair f
+  rotate: true
+  xy: 999, 1239
+  size: 262, 269
+  orig: 262, 269
+  offset: 0, 0
+  index: -1
+Angel/handl
+  rotate: true
+  xy: 1091, 1503
+  size: 225, 448
+  orig: 225, 448
+  offset: 0, 0
+  index: -1
+Angel/handr
+  rotate: true
+  xy: 923, 893
+  size: 321, 349
+  orig: 342, 349
+  offset: 12, 0
+  index: -1
+Angel/head b
+  rotate: true
+  xy: 1270, 1216
+  size: 285, 268
+  orig: 285, 268
+  offset: 0, 0
+  index: -1
+Angel/leg f up
+  rotate: false
+  xy: 1591, 460
+  size: 417, 361
+  orig: 417, 361
+  offset: 0, 0
+  index: -1
+Angel/leg上l
+  rotate: true
+  xy: 1625, 823
+  size: 324, 393
+  orig: 324, 393
+  offset: 0, 0
+  index: -1
+Angel/skirt b
+  rotate: true
+  xy: 275, 1274
+  size: 248, 431
+  orig: 248, 431
+  offset: 0, 0
+  index: -1
+Angel/skirtf
+  rotate: true
+  xy: 2, 1569
+  size: 211, 408
+  orig: 211, 409
+  offset: 0, 0
+  index: -1
+Angel/上臂
+  rotate: true
+  xy: 715, 1742
+  size: 193, 273
+  orig: 193, 274
+  offset: 0, 1
+  index: -1
+Angel/蝴蝶結
+  rotate: true
+  xy: 155, 1805
+  size: 130, 190
+  orig: 130, 190
+  offset: 0, 0
+  index: -1
+Angel/蝴蝶結大
+  rotate: false
+  xy: 1540, 1149
+  size: 347, 294
+  orig: 347, 294
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/eye
+  rotate: true
+  xy: 2, 1810
+  size: 125, 151
+  orig: 125, 153
+  offset: 0, 1
+  index: -1
+Dark_cropped_fixed/face
+  rotate: true
+  xy: 412, 1528
+  size: 250, 283
+  orig: 251, 284
+  offset: 1, 1
+  index: -1
+Dark_cropped_fixed/hair b
+  rotate: true
+  xy: 697, 1524
+  size: 213, 392
+  orig: 220, 392
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/hair f
+  rotate: true
+  xy: 530, 957
+  size: 307, 391
+  orig: 307, 391
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/hairl
+  rotate: true
+  xy: 1541, 1445
+  size: 243, 442
+  orig: 243, 442
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/hairr
+  rotate: true
+  xy: 2, 981
+  size: 291, 526
+  orig: 291, 526
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/handl
+  rotate: true
+  xy: 1230, 1730
+  size: 205, 490
+  orig: 205, 490
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/handr
+  rotate: true
+  xy: 1274, 826
+  size: 321, 349
+  orig: 321, 349
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/head b
+  rotate: true
+  xy: 708, 1266
+  size: 256, 289
+  orig: 256, 289
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/leg f up
+  rotate: false
+  xy: 778, 533
+  size: 410, 358
+  orig: 410, 358
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/leg上l
+  rotate: true
+  xy: 1190, 466
+  size: 358, 399
+  orig: 358, 399
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/skirt b
+  rotate: true
+  xy: 2, 636
+  size: 343, 416
+  orig: 343, 416
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/skirtf
+  rotate: false
+  xy: 394, 187
+  size: 377, 420
+  orig: 377, 420
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/上臂
+  rotate: true
+  xy: 2, 1313
+  size: 254, 271
+  orig: 362, 298
+  offset: 107, 27
+  index: -1
+Dark_cropped_fixed/左袖子
+  rotate: true
+  xy: 990, 1739
+  size: 196, 238
+  orig: 196, 240
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/皮帶
+  rotate: true
+  xy: 2, 248
+  size: 386, 390
+  orig: 386, 390
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/蝴蝶結大
+  rotate: false
+  xy: 347, 1782
+  size: 155, 153
+  orig: 155, 153
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/軀幹
+  rotate: true
+  xy: 1175, 2
+  size: 456, 500
+  orig: 456, 500
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/領子
+  rotate: false
+  xy: 420, 609
+  size: 356, 346
+  orig: 356, 346
+  offset: 0, 0
+  index: -1
+
+skeleton2.png
+size: 2048,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Angel/hairr
+  rotate: false
+  xy: 2, 2
+  size: 975, 1566
+  orig: 975, 1566
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/leg f down
+  rotate: false
+  xy: 979, 883
+  size: 603, 685
+  orig: 603, 685
+  offset: 0, 0
+  index: -1
+Dark_cropped_fixed/leg下r
+  rotate: true
+  xy: 979, 13
+  size: 868, 597
+  orig: 868, 597
+  offset: 0, 0
+  index: -1
+
+skeleton3.png
+size: 2048,2048
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+Angel/hairl
+  rotate: false
+  xy: 2, 601
+  size: 1453, 1335
+  orig: 1453, 1335
+  offset: 0, 0
+  index: -1
+Angel/leg f down
+  rotate: true
+  xy: 841, 5
+  size: 594, 676
+  orig: 594, 676
+  offset: 0, 0
+  index: -1
+Angel/leg下r
+  rotate: false
+  xy: 2, 2
+  size: 837, 597
+  orig: 837, 597
+  offset: 0, 0
+  index: -1
+Angel/軀幹
+  rotate: false
+  xy: 1457, 1191
+  size: 518, 745
+  orig: 518, 745
+  offset: 0, 0
+  index: -1

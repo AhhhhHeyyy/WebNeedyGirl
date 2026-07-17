@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>NeedyGirl Layer Compositor</title>
+<script src="shared/device-perf.js"></script>
+<script src="shared/state-sync.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@pixi/gif@2.1.1/dist/pixi-gif.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pixi-spine@4.0.6/dist/pixi-spine.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
+<link rel="stylesheet" href="shared/panel.css">
+<style>
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+
+/* #viewport-root splits the window into two side-by-side, non-overlapping
+   flex regions: #stage-area (the actual composition) and #panel (the layer
+   editor). This overrides shared/panel.css's #panel/#panel-toggle rules
+   (fixed-overlay, meant for a self-contained effect's OWN internal panel)
+   just for this composition root — the panel here docks as a real sidebar
+   instead of floating on top of the canvas.
+   Every effect/layer context stacks absolute within #stage-area; z-index
+   between them is coordinated at runtime by src/main.js (see reconcileZIndex). */
+#viewport-root { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; }
+/* cursor:none here (not on <body>) is the one bit of global coordination the
+   pixelCursor effect needs from outside its own iframe: it draws its own
+   8-bit cursor frontmost inside #stage-area, so the real OS pointer has to
+   be hidden over that same area — but only there, so the sidebar panel keeps
+   a normal, usable pointer. Elements below (e.g. drag/resize handles set by
+   DragTransform.js) can still set their own inline cursor to override this,
+   which is desired: functional feedback wins over the decorative cursor. */
+#stage-area { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; overflow: hidden; cursor: none; }
+#bg-effect-layer, #pixi-stage, #lottie-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+#lottie-layer { pointer-events: none; }
+
+#panel-toggle { position: absolute; top: 14px; right: 14px; }
+#panel {
+  position: relative;
+  flex: 0 0 278px; width: 278px; height: 100%; box-sizing: border-box;
+  transition: flex-basis .38s cubic-bezier(.4,0,.2,1), width .38s cubic-bezier(.4,0,.2,1);
+  /* shared/panel.css's gradient is tuned ~0.64 alpha for an overlay floating
+     on top of colorful content; docked as a sidebar here it only has the
+     black <body> behind it, so that same alpha reads as flat gray. Almost
+     opaque instead, same hues. */
+  background: linear-gradient(168deg,
+    rgba(255,224,240,0.97) 0%,
+    rgba(236,228,255,0.97) 48%,
+    rgba(220,236,255,0.97) 100%);
+}
+#panel.closed { flex-basis: 0; width: 0; overflow: hidden; padding: 0; transform: none; box-shadow: none; }
+
+#popup-tuning-sec .sec { display: flex; align-items: center; justify-content: space-between; }
+#popup-tuning-close {
+  border: none; background: none; cursor: pointer; color: #b490cc;
+  font-size: 14px; line-height: 1; padding: 0 2px;
+}
+#popup-tuning-close:hover { color: #8a5fb0; }
+
+/* The layer editor is a desktop/PC workflow — on phone/tablet-width screens
+   this is purely a viewer for the composed scene (and, later, in-canvas
+   effect interactions), so the panel and its toggle don't show up at all
+   and the stage simply fills the whole screen. Matches the same <=1024
+   "mobile/tablet" cutoff shared/device-perf.js already uses. */
+@media (max-width: 1024px) {
+  #panel-toggle, #panel { display: none; }
+}
+
+/* Portrait phone/tablet: block the composed scene with a "please rotate"
+   prompt instead of trying to fake landscape with a CSS rotation — a real
+   transform would desync Pixi's pointer/hit-testing math from the visuals
+   (it assumes an unrotated canvas). This just waits for the browser to
+   report an actual landscape viewport, so nothing about the coordinate
+   system needs to change at all. */
+#rotate-prompt {
+  display: none;
+  position: fixed; inset: 0; z-index: 9999;
+  align-items: center; justify-content: center; flex-direction: column; gap: 18px;
+  background: linear-gradient(168deg, #ffd8ea 0%, #e8deff 48%, #d4e8ff 100%);
+  color: #7060a0; text-align: center; padding: 24px;
+  font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+}
+#rotate-prompt .icon { font-size: 56px; animation: rotate-hint 1.6s ease-in-out infinite; }
+#rotate-prompt .msg { font-size: 15px; line-height: 1.7; }
+#rotate-prompt .msg small { display: block; font-size: 11.5px; opacity: .65; margin-top: 4px; }
+@keyframes rotate-hint {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
+}
+@media (orientation: portrait) and (max-width: 1024px) {
+  #rotate-prompt { display: flex; }
+}
+</style>
+</head>
+<body>
+<div id="rotate-prompt">
+  <div class="icon">📱</div>
+  <div class="msg">請將裝置轉為橫向以獲得最佳體驗<small>Please rotate your device to landscape</small></div>
+</div>
+<div id="viewport-root">
+  <div id="stage-area">
+    <div id="bg-effect-layer"></div>   <!-- self-contained effect pages, e.g. UI/holographic -->
+    <div id="pixi-stage"></div>        <!-- Pixi.js image layers -->
+    <div id="lottie-layer"></div>      <!-- lottie-web layer -->
+    <button id="panel-toggle" title="Layers">⚙</button>
+  </div>
+
+  <div id="panel">
+    <div class="sec">Layers</div>
+    <div id="layer-panel-mount"></div>
+    <div class="btn-row">
+      <button class="pbtn" id="layer-save-btn">💾 Save Layout</button>
+      <button class="pbtn" id="layer-reset-btn">↺ Reset</button>
+    </div>
+    <div id="popup-tuning-sec">
+      <div class="sec">Popup Face Align <button id="popup-tuning-close" title="Close">×</button></div>
+      <div id="popup-tuning-mount"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const panel = document.getElementById('panel');
+document.getElementById('panel-toggle').onclick = () => panel.classList.toggle('closed');
+document.getElementById('popup-tuning-close').onclick = () => {
+  document.getElementById('popup-tuning-sec').style.display = 'none';
+};
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

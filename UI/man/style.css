@@ -1,0 +1,37 @@
+html, body { background: transparent; overflow: hidden; }
+
+/* Positioned/sized in px by script.js on every appearance (random spot,
+   size as a % of viewport width) — only the pop-in/pop-out motion and
+   base look live here. */
+#man-img {
+  position: fixed;
+  top: 0; left: 0;
+  width: 200px;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0;
+  transform: scale(0.4);
+  filter: drop-shadow(0 8px 22px rgba(0,0,0,0.35));
+  will-change: transform, opacity;
+}
+
+/* --dur (animation-duration) and --op (peak opacity) are set inline by
+   script.js from the panel's Show Time / Opacity sliders right before the
+   class is (re-)added, so one shared keyframe works for every appearance.
+   The keyframe percentages below are just a default matching script.js's
+   default 2s hold + 0.25s in/out — script.js overrides this whole rule via
+   an injected <style> (see updateKeyframes()) so the hold stays a fixed
+   2 seconds' worth of *time* no matter what --dur ends up being, since a
+   plain % here would only mean 2s at one specific duration. */
+@keyframes man-pop {
+  0%   { opacity: 0;           transform: scale(0.4); }
+  10%  { opacity: var(--op,1); transform: scale(1); }
+  90%  { opacity: var(--op,1); transform: scale(1); }
+  100% { opacity: 0;           transform: scale(0.75); }
+}
+#man-img.pop { animation: man-pop var(--dur, 2.5s) ease-out both; }
+
+/* Set by script.js on ng-effect-pause/resume — pauses the pop animation's
+   timeline mid-flight (display:none from BaseIframeLayer only hides it,
+   the timeline keeps ticking underneath otherwise). */
+html.ng-paused #man-img.pop { animation-play-state: paused; }

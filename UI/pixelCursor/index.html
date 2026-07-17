@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pixel Cursor</title>
+<script src="../../shared/device-perf.js"></script>
+<script src="../../shared/state-sync.js"></script>
+<link rel="stylesheet" href="../../shared/panel.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<button id="panel-toggle" title="Pixel Cursor Controls">🕹</button>
+
+<div id="panel" class="closed">
+  <div class="sec">Pixel Cursor</div>
+  <div class="sg" id="sg-scale"></div>
+  <div class="sg">
+    <div class="sg-top"><span class="sg-label">Ghost Trail</span></div>
+    <input type="checkbox" id="trail-enabled">
+  </div>
+  <div class="sg" id="sg-spacing"></div>
+  <div class="sg" id="sg-count"></div>
+  <div class="sg" id="sg-fade"></div>
+
+  <div class="div"></div>
+
+  <div class="sec">Colors</div>
+  <div class="sg">
+    <div class="sg-top"><span class="sg-label">Ghost Trail</span></div>
+    <input type="color" id="trail-color">
+  </div>
+
+  <div class="div"></div>
+
+  <div class="btn-row">
+    <button class="pbtn" id="reset-btn">↺ Reset</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

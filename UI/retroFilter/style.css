@@ -1,0 +1,74 @@
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+
+/* This effect is a screen-space filter meant to sit in FRONT of the whole
+   composited scene (see src/layers/retroFilterLayer.js, which overrides
+   BaseIframeLayer's normal "always at the back" z-index) — unlike
+   checkerboard/holographic it paints nothing of its own on <body>; every
+   div below is a transparent overlay blended onto whatever the parent page
+   has already rendered underneath it. */
+#vignette, #grade, #scanline, #grain, #flicker {
+  position: fixed; inset: 0; pointer-events: none; transition: opacity .3s;
+}
+#vignette.off, #grade.off, #scanline.off, #grain.off, #flicker.off { opacity: 0; }
+
+#vignette { z-index: 1; inset: -2%; mix-blend-mode: multiply; }
+#grade    { z-index: 2; mix-blend-mode: multiply; }
+#scanline { z-index: 3; mix-blend-mode: multiply; background-repeat: repeat; }
+
+/* Grain: a small tiled fractal-noise SVG, nudged around by a CSS keyframe
+   (not JS) so the shimmer costs nothing on the main thread — only its
+   opacity is wired to the panel slider. */
+#grain {
+  z-index: 4; inset: -50%; width: 200%; height: 200%;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: grain-shift 0.5s steps(3) infinite;
+}
+@keyframes grain-shift {
+  0%   { transform: translate(0, 0); }
+  33%  { transform: translate(-2%, 2%); }
+  66%  { transform: translate(2%, -1%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Flicker: a brief white pulse; amplitude is fed in via --amt (set from the
+   panel slider) so the keyframe itself never needs to be regenerated. */
+#flicker { z-index: 5; background: #fff; animation: flicker-pulse 5s infinite; }
+@keyframes flicker-pulse {
+  0%, 92%, 100% { opacity: 0; }
+  93% { opacity: var(--amt, 0.03); }
+  94% { opacity: 0; }
+  95% { opacity: calc(var(--amt, 0.03) * 0.6); }
+  96% { opacity: 0; }
+}
+
+/* ── Max / number input (mirrors UI/holographic, UI/checkerboard) ── */
+.max-wrap { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
+.max-lbl { font-size: 9.5px; color: #baaad2; }
+input.max-inp {
+  width: 40px; border-radius: 6px; border: 1px solid rgba(198,178,238,0.52);
+  background: rgba(255,255,255,0.56); padding: 2px 4px;
+  font-size: 10.5px; color: #806898; text-align: center; outline: none; font-family: inherit;
+}
+input.max-inp:focus { border-color: rgba(175,142,228,0.82); background: rgba(255,255,255,0.88); }
+input.max-inp::-webkit-outer-spin-button,
+input.max-inp::-webkit-inner-spin-button { -webkit-appearance: none; }
+input.max-inp[type=number] { -moz-appearance: textfield; }
+
+/* ── Color picker ── */
+.cpick-wrap {
+  flex-shrink: 0; width: 30px; height: 22px; border-radius: 7px; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(160,128,205,0.32), inset 0 0 0 1px rgba(255,255,255,0.75);
+  cursor: pointer; display: block;
+}
+input[type=color] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 100%; border: none; cursor: pointer; padding: 0; background: none;
+}
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type=color]::-webkit-color-swatch { border: none; }
+
+/* ── Overlay block (scan line / vignette / grade) ── */
+.ov-block { margin-bottom: 4px; }
+.ov-head  { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+.ov-head .pbtn { flex: 1; padding: 6px 8px; font-size: 11px; }

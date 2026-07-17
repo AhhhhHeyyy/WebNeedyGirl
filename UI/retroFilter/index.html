@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Retro Filter</title>
+<script src="../../shared/state-sync.js"></script>
+<link rel="stylesheet" href="../../shared/panel.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="vignette"></div>
+<div id="grade"></div>
+<div id="scanline"></div>
+<div id="grain"></div>
+<div id="flicker"></div>
+
+<button id="panel-toggle" title="Controls">⚙</button>
+
+<div id="panel" class="closed">
+
+  <!-- ── Scanline ── -->
+  <div class="sec">Scanline</div>
+  <div class="ov-block">
+    <div class="ov-head">
+      <button class="pbtn on" id="scanline-btn">▦ Scanline</button>
+      <label class="cpick-wrap" title="Scanline color">
+        <input type="color" id="scanline-color" value="#000000">
+      </label>
+      <span class="sg-val" id="scanline-pct">18%</span>
+    </div>
+    <div class="sg-track">
+      <input type="range" id="scanline-opa" min="0" max="0.5" step="0.01" value="0.18">
+      <div class="max-wrap">
+        <span class="max-lbl">max</span>
+        <input type="number" class="max-inp" id="scanline-opa-max" value="0.5" step="0.01">
+      </div>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <!-- ── Vignette ── -->
+  <div class="sec">Vignette</div>
+  <div class="ov-block">
+    <div class="ov-head">
+      <button class="pbtn on" id="vignette-btn">◐ Vignette</button>
+      <label class="cpick-wrap" title="Vignette color">
+        <input type="color" id="vignette-color" value="#140a05">
+      </label>
+      <span class="sg-val" id="vignette-pct">55%</span>
+    </div>
+    <div class="sg-track">
+      <input type="range" id="vignette-opa" min="0" max="1" step="0.01" value="0.55">
+      <div class="max-wrap">
+        <span class="max-lbl">max</span>
+        <input type="number" class="max-inp" id="vignette-opa-max" value="1" step="0.01">
+      </div>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <!-- ── Color Grade ── -->
+  <div class="sec">Color Grade</div>
+  <div class="ov-block">
+    <div class="ov-head">
+      <button class="pbtn on" id="grade-btn">◈ Color Grade</button>
+      <label class="cpick-wrap" title="Grade color">
+        <input type="color" id="grade-color" value="#ff8c46">
+      </label>
+      <span class="sg-val" id="grade-pct">7%</span>
+    </div>
+    <div class="sg-track">
+      <input type="range" id="grade-opa" min="0" max="0.3" step="0.005" value="0.07">
+      <div class="max-wrap">
+        <span class="max-lbl">max</span>
+        <input type="number" class="max-inp" id="grade-opa-max" value="0.3" step="0.005">
+      </div>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <!-- ── Grain ── -->
+  <div class="sec">Grain</div>
+  <div class="ov-block">
+    <div class="ov-head">
+      <button class="pbtn on" id="grain-btn">✦ Grain</button>
+      <span class="sg-val" id="grain-pct">5%</span>
+    </div>
+    <div class="sg-track">
+      <input type="range" id="grain-opa" min="0" max="0.3" step="0.005" value="0.05">
+      <div class="max-wrap">
+        <span class="max-lbl">max</span>
+        <input type="number" class="max-inp" id="grain-opa-max" value="0.3" step="0.005">
+      </div>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <!-- ── Flicker ── -->
+  <div class="sec">Flicker</div>
+  <div class="ov-block">
+    <div class="ov-head">
+      <button class="pbtn on" id="flicker-btn">⚡ Flicker</button>
+      <span class="sg-val" id="flicker-pct">3%</span>
+    </div>
+    <div class="sg-track">
+      <input type="range" id="flicker-opa" min="0" max="0.2" step="0.005" value="0.03">
+      <div class="max-wrap">
+        <span class="max-lbl">max</span>
+        <input type="number" class="max-inp" id="flicker-opa-max" value="0.2" step="0.005">
+      </div>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <div class="btn-row">
+    <button class="pbtn" id="reset-btn">↺ Reset</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
