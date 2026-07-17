@@ -34,7 +34,13 @@ window.NeedyGirlState = (function () {
   if (!haveServerBackend) {
     try {
       const xhr2 = new XMLHttpRequest();
-      xhr2.open('GET', 'state.json', false);
+      // Root-absolute, NOT a bare relative path: this same script is loaded
+      // by effect pages nested arbitrarily deep (e.g. UI/retroFilter/), where
+      // a relative 'state.json' would resolve against THAT page's own folder
+      // instead of the site root and just 404 — which is exactly why
+      // retroFilter's (and every other effect's) saved settings weren't
+      // applying on a static deploy even after this fallback was added.
+      xhr2.open('GET', '/state.json', false);
       xhr2.send(null);
       if (xhr2.status === 200) cache = JSON.parse(xhr2.responseText);
     } catch (e) { /* state.json not reachable either */ }
