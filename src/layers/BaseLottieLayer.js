@@ -4,8 +4,29 @@ import { LOGICAL_W, LOGICAL_H } from '../core/Stage.js';
 // separate DOM context stacked via CSS z-index rather than folded into the
 // Pixi scene graph — same "isolate the heavy/self-contained subsystem"
 // reasoning as the iframe pattern for GPU-heavy sub-renderers.
+
+// Parsed animation JSON, cached per src (module-level, shared across every
+// instance) — mirrors nestedScene3PopupSpawner.js's PIXI.Assets.load caching
+// for its Spine skeleton data. Most layers only ever load their own src
+// once, but nestedScene3PopupSpawner.js spawns a fresh throwaway instance of
+// the SAME src on every single click; passing lottie-web `path: src` instead
+// (its own default) makes it silently re-fetch and re-JSON.parse that file
+// from scratch every time — the one asset in that click's hot path that
+// wasn't already pooled/cached, and the one that showed up as a multi-second
+// long task under CPU throttling. Fetched once per unique src, reused as
+// `animationData` from then on; still a brand-new lottie-web instance per
+// layer (each needs its own independent playback position), just skipping
+// the repeat network round-trip + parse.
+const animationDataCache = new Map();
+function loadAnimationData(src) {
+  if (!animationDataCache.has(src)) {
+    animationDataCache.set(src, fetch(src).then((r) => r.json()));
+  }
+  return animationDataCache.get(src);
+}
+
 export class BaseLottieLayer {
-  constructor({ id, label, src, container, stage, x, y, scale = 1, rotation = 0, width = 512, height = 512, loop = true }) {
+  constructor({ id, label, animationData, container, stage, x, y, scale = 1, rotation = 0, width = 512, height = 512, loop = true }) {
     this.id = id;
     this.label = label;
     this.type = 'lottie';
@@ -20,12 +41,12 @@ export class BaseLottieLayer {
     Object.assign(this.el.style, {
       position: 'absolute', top: '0', left: '0',
       width: `${width}px`, height: `${height}px`,
-      pointerEvents: 'auto', cursor: 'grab',
+      pointerEvents: 'auto', cursor: 'none', // see DragTransform.js's sprite.cursor comment — same reasoning
     });
     container.appendChild(this.el);
 
     this.anim = lottie.loadAnimation({
-      container: this.el, renderer: 'canvas', loop, autoplay: true, path: src,
+      container: this.el, renderer: 'canvas', loop, autoplay: true, animationData,
     });
 
     this._applyCss();
@@ -64,8 +85,9 @@ export class BaseLottieLayer {
     });
   }
 
-  static async create(opts) {
-    return new BaseLottieLayer(opts);
+  static async create({ src, ...opts }) {
+    const animationData = await loadAnimationData(src);
+    return new BaseLottieLayer({ ...opts, animationData });
   }
 
   setVisible(visible) {
@@ -143,7 +165,6 @@ export class BaseLottieLayer {
 
   setLocked(locked) {
     this.locked = !!locked;
-    this.el.style.cursor = this.locked ? 'default' : 'grab';
   }
 
   select() {}

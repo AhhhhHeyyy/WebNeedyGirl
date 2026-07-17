@@ -131,7 +131,7 @@ function ensureStyles() {
            trying to pan the page/scroll natively during a drag gesture. */
         pointer-events: auto;
         touch-action: none;
-        cursor: grab;
+        cursor: none; /* the decorative pixel-cursor effect is the only cursor meant to show, not this native grab hand */
       }
       .ng-chat-row {
         display: flex;
@@ -274,7 +274,6 @@ function makeThumbDraggable(messages, thumb) {
     startClientY = e.clientY;
     startScrollTop = messages.scrollTop;
     thumb.setPointerCapture(e.pointerId);
-    thumb.style.cursor = 'grabbing';
     e.preventDefault(); // no text-selection / native touch-scroll fighting the drag
   });
 
@@ -292,7 +291,6 @@ function makeThumbDraggable(messages, thumb) {
     if (!dragging) return;
     dragging = false;
     thumb.releasePointerCapture(e.pointerId);
-    thumb.style.cursor = 'grab';
     const row = neighborRow(messages, 0);
     if (row) messages.scrollTop = row.offsetTop;
   };

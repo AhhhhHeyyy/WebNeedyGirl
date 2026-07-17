@@ -13,7 +13,15 @@ export class DragTransform {
     this.locked = false;
 
     sprite.eventMode = 'static';
-    sprite.cursor = 'grab';
+    // 'none', not 'grab' — Pixi sets this straight onto the canvas element's
+    // own inline style, which beats #stage-area's `cursor: none` (see
+    // index.html) since an inline style always wins over an inherited one.
+    // Left as 'grab', that native hand icon would reappear over every
+    // draggable sprite even though the custom pixel cursor is still right
+    // there rendering on top of it — two cursors at once. The decorative
+    // effect cursor is meant to be the only one visible, full stop, not just
+    // everywhere except interactive sprites.
+    sprite.cursor = 'none';
     sprite.anchor?.set?.(0.5);
 
     this._dragState = null;
@@ -40,7 +48,7 @@ export class DragTransform {
       .drawRect(-HANDLE_SIZE / 2, -HANDLE_SIZE / 2, HANDLE_SIZE, HANDLE_SIZE)
       .endFill();
     this.corner.eventMode = 'static';
-    this.corner.cursor = 'nwse-resize';
+    this.corner.cursor = 'none'; // same reasoning as the sprite's own cursor above
     this.corner.on('pointerdown', (e) => this._startScale(e));
     this.handles.addChild(this.corner);
   }
@@ -62,7 +70,6 @@ export class DragTransform {
   // nudged out of place by an accidental drag on a nearby sprite.
   setLocked(locked) {
     this.locked = !!locked;
-    this.sprite.cursor = this.locked ? 'default' : 'grab';
     this.corner.eventMode = this.locked ? 'none' : 'static';
     if (this.selected) this.corner.visible = !this.locked;
   }
