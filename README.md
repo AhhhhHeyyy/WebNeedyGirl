@@ -230,11 +230,22 @@ UI/我的新效果/
   停掉整個 Pixi ticker（`stage.app.ticker.stop()`）跟所有圖層的 `pause()`；回來時只恢復本來
   就是顯示狀態的圖層，不會把使用者手動關掉的圖層打開。
 - **解析度依螢幕寬度動態調整**：`shared/device-perf.js` 提供 `window.getPerfResolutionCap()`，
-  螢幕寬度 ≤1024px（手機/平板)時把解析度倍率壓到 1.5，比桌面版的 2 省一截 GPU 用量。
-  Pixi stage 跟每個 `UI/<name>/` 自帶效果資料夾的自訂 resize() 都呼叫這個共用函式，新增效果資料夾時
-  記得也套用同一支（參考 `UI/holographic/script.js` 的 `resize()` 怎麼用）。
+  螢幕寬度 ≤1024px（手機/平板)時把解析度倍率壓到 1.5，比桌面版的 2 省一截 GPU 用量。同一支函式
+  也會把算出來的 canvas 最長邊硬夾在 2600px 以內（`maxLongestSide` 參數，預設 2600）——4K/5K
+  這種大螢幕或高 DPI 螢幕即使不算「手機」，實際像素總量還是可能誇張的大，這道保險跟手機的降級是
+  分開的兩件事，但併在同一支函式裡處理。Pixi stage 跟每個 `UI/<name>/` 自帶效果資料夾的自訂
+  resize() 都呼叫這個共用函式，新增效果資料夾時記得也套用同一支（參考
+  `UI/holographic/script.js` 的 `resize()` 怎麼用）。
+- **FPS 自適應降級（目前只有 `UI/checkerboard`）**：`shared/perf-monitor.js` 在主頁面量測實際
+  影格率，分成 `off/low/medium/high` 四級，卡頓超過一段時間就自動降一級、穩定夠久才會升回去
+  （不對稱遲滯：降級快、升級慢，避免來回跳動）。透過 `BaseIframeLayer` 廣播
+  `{type:'ng-perf-tier', tier}` 給每個特效 iframe，`UI/checkerboard/script.js` 目前是唯一會
+  依此夾限自己 glitch 運算量的效果（`off` 時整個關掉 glitch 的 JS 迴圈，只留零成本的 CSS
+  背景飄移）。之後要讓其他效果也吃這個機制，延用同一套廣播、各自加自己的 `ng-perf-tier` 處理
+  分支即可。
 - **除錯用**：瀏覽器 console 打 `window.__needyGirl` 可以拿到 `{ stage, manager }`，方便直接
-  戳圖層狀態（例如 `__needyGirl.manager.layers` 列出所有圖層、`.sprite.playing` 看 GIF 是否在播放）。
+  戳圖層狀態（例如 `__needyGirl.manager.layers` 列出所有圖層、`.sprite.playing` 看 GIF 是否在播放）；
+  `window.getPerfTier()` 可以查目前的效能分級。
 
 ## 11. 已知限制
 

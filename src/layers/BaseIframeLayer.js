@@ -27,7 +27,18 @@ export class BaseIframeLayer {
     // Sent on 'load' too in case pause()/resume() lands before the iframe
     // has finished its own boot and wired up the listener.
     this._paused = false;
-    this.el.addEventListener('load', () => this._postPauseState());
+    this.el.addEventListener('load', () => { this._postPauseState(); this._postTierState(); });
+
+    // shared/perf-monitor.js (loaded by the root index.html only — same-origin
+    // iframes don't share window scope, so this can't just be read directly
+    // from inside the effect's own document) broadcasts a measured-FPS
+    // quality tier; forward it the same way pause/resume already works.
+    // Effects opt in by listening for {type:'ng-perf-tier', tier} — not all
+    // of them do yet, unhandled messages are simply ignored.
+    this._tier = window.getPerfTier ? window.getPerfTier() : 'high';
+    this._offTierChange = window.onPerfTierChange
+      ? window.onPerfTierChange((t) => { this._tier = t; this._postTierState(); })
+      : null;
 
     this.onChange = null; // wired by LayerManager.add()
   }
@@ -59,6 +70,10 @@ export class BaseIframeLayer {
     );
   }
 
+  _postTierState() {
+    this.el.contentWindow?.postMessage({ type: 'ng-perf-tier', tier: this._tier }, window.location.origin);
+  }
+
   // Always stays behind every Pixi/Lottie layer — it's the background,
   // not a slot in the interleaved z-stack (see main.js for why Pixi/Lottie
   // can't fully interleave with a separate DOM context either).
@@ -67,6 +82,7 @@ export class BaseIframeLayer {
   }
 
   destroy() {
+    this._offTierChange?.();
     this.el.remove();
   }
 }

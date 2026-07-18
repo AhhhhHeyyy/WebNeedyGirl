@@ -209,11 +209,11 @@ addEventListener('message', (e)=>{
   if(d && d.type==='ng-holographic-pointer'){ mouse.tx=d.tx; mouse.ty=d.ty; }
 });
 
-/* ── Resize ── */
+/* ── Resize ── the longest-side clamp this used to do locally now lives in
+   shared/device-perf.js's getPerfResolutionCap() itself, so every consumer
+   (Stage.js, pixelCursor, this) gets it automatically. */
 function resize(){
-  const dpr=window.getPerfResolutionCap?window.getPerfResolutionCap():Math.min(window.devicePixelRatio||1,2); let scale=dpr;
-  const longest=Math.max(innerWidth,innerHeight)*scale;
-  if(longest>2600) scale*=2600/longest;
+  const scale=window.getPerfResolutionCap?window.getPerfResolutionCap():Math.min(window.devicePixelRatio||1,2);
   canvas.width=Math.floor(innerWidth*scale); canvas.height=Math.floor(innerHeight*scale);
   gl.viewport(0,0,canvas.width,canvas.height);
 }

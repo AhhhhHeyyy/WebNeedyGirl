@@ -14,6 +14,18 @@ const FRONTMOST_Z = 27; // above retroFilterLayer's 25, lottie's 20, pixi's 10
 // it visibly chase the finger during drags, so it stays hidden there.
 const MOBILE_MAX_WIDTH = 1024;
 
+// Width alone misses large touch tablets — an iPad Pro's landscape width
+// (1366) is well past MOBILE_MAX_WIDTH, so on real hardware it was treated
+// as "desktop" and left the custom cursor on even though there's no real
+// mouse driving it: touch only fires pointermove mid-drag, so the sprite got
+// stranded at the last drag position once the finger lifted instead of
+// hiding like a real pointer leaving the screen (read as the cursor "running
+// out" to a random spot and staying there). `(pointer: fine) and
+// (hover: hover)` reflects whether the PRIMARY input is actually a
+// mouse/trackpad regardless of viewport width, so it catches those tablets
+// too while still sparing touchscreen laptops that are genuinely mouse-driven.
+const FINE_POINTER_QUERY = '(pointer: fine) and (hover: hover)';
+
 export class PixelCursorLayer extends BaseIframeLayer {
   constructor(opts) {
     super(opts);
@@ -25,7 +37,8 @@ export class PixelCursorLayer extends BaseIframeLayer {
     // and forwarded in (mirrors holographicLayer.js's _forwardPointer).
     this.el.style.pointerEvents = 'none';
     this._panelOpen = false;
-    this._isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
+    this._finePointerMedia = window.matchMedia ? window.matchMedia(FINE_POINTER_QUERY) : null;
+    this._isMobile = this._computeIsMobile();
 
     this._onPointerMove = (e) => this._forwardPointer(e);
     window.addEventListener('pointermove', this._onPointerMove);
@@ -55,10 +68,19 @@ export class PixelCursorLayer extends BaseIframeLayer {
 
     // Viewport width can change (window resize, or a tablet flipping
     // orientation) without a page reload, so this is re-checked live rather
-    // than only once at construction.
+    // than only once at construction. The pointer/hover media query has its
+    // own 'change' event too (e.g. a Bluetooth mouse pairing/unpairing with
+    // a tablet), separate from any resize.
     this._onResize = () => this._applyMobileState();
     window.addEventListener('resize', this._onResize);
+    this._onPointerCapabilityChange = () => this._applyMobileState();
+    this._finePointerMedia?.addEventListener('change', this._onPointerCapabilityChange);
     this._applyMobileState();
+  }
+
+  _computeIsMobile() {
+    if (window.innerWidth <= MOBILE_MAX_WIDTH) return true;
+    return this._finePointerMedia ? !this._finePointerMedia.matches : false;
   }
 
   // `this.visible` (set via setVisible, e.g. the layer panel's checkbox)
@@ -66,7 +88,7 @@ export class PixelCursorLayer extends BaseIframeLayer {
   // just forces the on-screen result to hidden without touching that intent,
   // so resizing back to desktop restores whatever the user had chosen.
   _applyMobileState() {
-    this._isMobile = window.innerWidth <= MOBILE_MAX_WIDTH;
+    this._isMobile = this._computeIsMobile();
     const shouldShow = this.visible && !this._isMobile;
     this.el.style.display = shouldShow ? 'block' : 'none';
     this.toggleBtn.style.display = shouldShow ? 'block' : 'none';
@@ -77,21 +99,15 @@ export class PixelCursorLayer extends BaseIframeLayer {
     const rect = this.el.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
 
-    // Prefer the browser's own short-horizon motion prediction over the
-    // event's raw (already-stale-by-the-time-we-render) coordinates — this
-    // is the same trick drawing apps use to hide input-to-paint latency.
-    // Falls back to e.clientX/Y wherever getPredictedEvents isn't supported.
-    let clientX = e.clientX, clientY = e.clientY;
-    if (typeof e.getPredictedEvents === 'function') {
-      const predicted = e.getPredictedEvents();
-      if (predicted.length) {
-        const p = predicted[predicted.length - 1];
-        clientX = p.clientX; clientY = p.clientY;
-      }
-    }
-
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
+    // getPredictedEvents() (browser short-horizon motion extrapolation) used
+    // to be preferred here to hide input-to-paint latency, but with two
+    // separate listeners feeding this handler (pointermove + pointerrawupdate
+    // — see the constructor) each firing its own not-vsync-aligned
+    // prediction, the two extrapolated points routinely disagreed, which
+    // read as jitter. Raw e.clientX/Y is a hair less "ahead" but is a single
+    // ground-truth value both listeners agree on.
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
     // Same-origin, so a direct call is legal — and unlike postMessage (an
     // async task the browser schedules onto the target realm's queue,
@@ -125,6 +141,7 @@ export class PixelCursorLayer extends BaseIframeLayer {
       window.removeEventListener('pointerrawupdate', this._onPointerMove);
     }
     window.removeEventListener('resize', this._onResize);
+    this._finePointerMedia?.removeEventListener('change', this._onPointerCapabilityChange);
     this.toggleBtn.remove();
     super.destroy();
   }

@@ -14,7 +14,7 @@ const saved = loadSaved();
    there's nothing left to animate at runtime), but it stays here since
    isCursorCell() below still uses it to size the ghost trail's silhouette. */
 const V = {
-  scale: 2,          // pixel-art cell size multiplier
+  scale: 1.5,          // pixel-art cell size multiplier
   borderWidth: 1,     // how many outline rings count toward the ghost trail's silhouette
   trailEnabled: false, // ghost afterimages off by default — they read as lag on the live cursor
   trailSpacing: 18,   // min CSS px moved before dropping a new ghost
@@ -107,11 +107,10 @@ const pointer = { x: -9999, y: -9999, has: false };
 function setPointer(x, y) {
   pointer.x = x; pointer.y = y; pointer.has = true;
   maybeSampleGhost();
-  // Position itself is NOT updated here — it eases toward `pointer` every
-  // rAF tick instead (see displayPos/CURSOR_SMOOTH_MS below). Snapping
-  // straight to raw pointer coordinates on every event is more immediate,
-  // but reads as jumpy/rigid at fast direction changes; a light follow lag
-  // reads as smoother even though it's a few ms less instantaneous.
+  // Position itself is NOT read into displayPos until the next rAF tick
+  // (see updateDisplayPos below) — displayPos tracks it 1:1 there, with
+  // anti-flicker handled at render time (positionCursorEl's pixel snap)
+  // instead of via follow-lag smoothing here.
 }
 addEventListener('mousemove', (e) => setPointer(e.clientX, e.clientY));
 addEventListener('touchmove', (e) => {
@@ -230,37 +229,78 @@ updateCursorSize();
 // lands the tip exactly on the eased cursor position (see CURSOR_BITMAP
 // comment above for the hotspot convention; see displayPos/frame() below
 // for why this isn't just `pointer` directly).
+//
+// displayPos is snapped to the nearest *device* pixel before it goes into
+// the transform. `image-rendering: pixelated` needs the sprite's source
+// pixels to land on whole device-pixel boundaries to stay crisp — at a
+// sub-pixel translate the compositor has to blend it across two device
+// pixels' worth of positions, and doing that fresh every frame as
+// displayPos drifts by fractional amounts is what reads as a faint
+// flicker/stepping during otherwise-smooth motion. Rounding removes the
+// sub-pixel remainder feeding that blend; any leftover "step" is a single
+// device pixel, i.e. below what's perceptible.
 function positionCursorEl() {
   cursorSprite.style.display = 'block';
-  cursorSprite.style.transform = `translate3d(${displayPos.x}px, ${displayPos.y}px, 0)`;
+  const px = Math.round(displayPos.x * dpr) / dpr;
+  const py = Math.round(displayPos.y * dpr) / dpr;
+  cursorSprite.style.transform = `translate3d(${px}px, ${py}px, 0)`;
 }
 
-// The cursor eases toward `pointer` (the real, immediately-updated target)
-// instead of snapping straight to it — a tiny bit of follow lag reads as a
-// smooth glide, whereas 1:1 snapping reads as jumpy/rigid on fast direction
-// changes. Exponential decay (not a flat per-frame lerp factor) so the feel
-// stays the same regardless of display refresh rate: smaller
-// CURSOR_SMOOTH_MS = snappier/tighter follow, larger = more trailing lag.
-const CURSOR_SMOOTH_MS = 55;
+// displayPos eases toward `pointer` via a One Euro Filter (Casiez et al.
+// 2012) — same stylus-style idea as before (smoothing strength adapts to
+// current speed: heavier near-stationary, near-raw once actually moving),
+// but tuned much lighter than the first pass. positionCursorEl's
+// device-pixel rounding now does most of the anti-flicker work by itself
+// (any noise under half a device pixel just rounds away for free), so this
+// filter only needs to mop up whatever noise is left *above* that
+// threshold — it doesn't have to carry the whole job the way the first,
+// heavier version tried to, which is what made that version's low-speed lag
+// noticeable once rounding was added on top of it.
+//   minCutoff: base cutoff (Hz) at zero speed — lower = more smoothing at
+//              rest, higher = lighter touch (less lag settling in at rest).
+//   beta:      how fast the cutoff opens up as speed increases (px/s) —
+//              higher = faster-moving cursor sheds smoothing sooner.
+const ONE_EURO_MIN_CUTOFF = 4.0;
+const ONE_EURO_BETA = 0.015;
+const ONE_EURO_D_CUTOFF = 1.0;
+
+class LowPassFilter {
+  constructor() { this.y = null; }
+  filter(x, alpha) {
+    this.y = this.y === null ? x : alpha * x + (1 - alpha) * this.y;
+    return this.y;
+  }
+}
+function oneEuroAlpha(cutoffHz, dtSec) {
+  const tau = 1 / (2 * Math.PI * cutoffHz);
+  return 1 / (1 + tau / dtSec);
+}
+class OneEuroFilter {
+  constructor(minCutoff, beta, dCutoff) {
+    this.minCutoff = minCutoff; this.beta = beta; this.dCutoff = dCutoff;
+    this.xFilt = new LowPassFilter(); this.dxFilt = new LowPassFilter();
+    this.lastX = null;
+  }
+  filter(x, dtSec) {
+    if (this.lastX === null) { this.lastX = x; return this.xFilt.filter(x, 1); }
+    const dx = (x - this.lastX) / dtSec;
+    this.lastX = x;
+    const edx = this.dxFilt.filter(dx, oneEuroAlpha(this.dCutoff, dtSec));
+    const cutoff = this.minCutoff + this.beta * Math.abs(edx);
+    return this.xFilt.filter(x, oneEuroAlpha(cutoff, dtSec));
+  }
+}
+const filterX = new OneEuroFilter(ONE_EURO_MIN_CUTOFF, ONE_EURO_BETA, ONE_EURO_D_CUTOFF);
+const filterY = new OneEuroFilter(ONE_EURO_MIN_CUTOFF, ONE_EURO_BETA, ONE_EURO_D_CUTOFF);
 const displayPos = { x: 0, y: 0, ready: false };
 let lastFrameTime = null;
 function updateDisplayPos(now) {
   if (!pointer.has) { displayPos.ready = false; return false; }
-  if (!displayPos.ready) {
-    displayPos.x = pointer.x; displayPos.y = pointer.y; displayPos.ready = true;
-    lastFrameTime = now;
-    return true;
-  }
-  const dt = lastFrameTime === null ? 16 : now - lastFrameTime;
+  const dtSec = Math.max((lastFrameTime === null ? 16 : now - lastFrameTime) / 1000, 1e-3);
   lastFrameTime = now;
-  const dx = pointer.x - displayPos.x, dy = pointer.y - displayPos.y;
-  if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) {
-    displayPos.x = pointer.x; displayPos.y = pointer.y;
-  } else {
-    const factor = 1 - Math.exp(-dt / CURSOR_SMOOTH_MS);
-    displayPos.x += dx * factor;
-    displayPos.y += dy * factor;
-  }
+  displayPos.x = filterX.filter(pointer.x, dtSec);
+  displayPos.y = filterY.filter(pointer.y, dtSec);
+  displayPos.ready = true;
   return true;
 }
 
@@ -320,9 +360,9 @@ document.getElementById('reset-btn').onclick = () => {
 
 /* ── Render loop ── #gl (the big full-stage-area canvas) is only used for
    the ghost trail. The live cursor's *content* plays itself independently
-   (it's a looping <video>), but its *position* now eases toward the
-   pointer every tick (see updateDisplayPos), so — unlike before the easing
-   was added — this loop is no longer just idling with the trail off. */
+   (it's a looping <video>); its *position* is synced from `pointer` and
+   (re)placed every tick (see updateDisplayPos/positionCursorEl), so this
+   loop is still doing real work even with the trail off. */
 let rafId = null;
 function frame(now) {
   if (updateDisplayPos(now)) positionCursorEl();

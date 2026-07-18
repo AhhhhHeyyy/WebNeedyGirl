@@ -10,7 +10,11 @@ function easeOutBack(t) {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 }
 
-const LIFT_PX = 100;
+// Fraction of the board's own current height (sprite.height, which already
+// bakes in sprite.scale.y) instead of a fixed logical-px amount — a board
+// resized bigger/smaller via the panel's scale slider should lift by a
+// proportional amount, not the same absolute distance regardless of size.
+const LIFT_RATIO = 0.0997; // ~100px at this asset's native/authored scale
 const LIFT_MS = 420;
 const DROP_MS = 320;
 // Real hover (pointerover/out) doesn't exist on a touchscreen — the browser
@@ -57,16 +61,22 @@ export class ListStickersLayer extends BoardAnchoredLayer {
     this._pressCleanup = null;
 
     this.sprite.on('pointerover', (e) => {
-      if (e.pointerType === 'mouse') this._animateTo(LIFT_PX, LIFT_MS);
+      if (e.pointerType === 'mouse') this._animateTo(this._liftPx(), LIFT_MS);
     });
     this.sprite.on('pointerout', (e) => {
       if (e.pointerType === 'mouse') this._animateTo(0, DROP_MS);
     });
-    // Grabbing it mid-lift should freeze the offset right where it is
-    // instead of the animation ticker and DragTransform's pointermove
-    // handler both fighting to set sprite.y every frame.
+    // Grabbing it (to drag-reposition in the editor) shouldn't inherit
+    // whatever hover-lift happened to be mid-flight or already settled —
+    // DragTransform captures its drag-start y right after this fires, so a
+    // stale lift baked into sprite.y here would offset the whole drag (and
+    // whatever anchor gets saved from it). Just freezing the animation
+    // (_stopAnim() alone) isn't enough: the *next* pointerout still
+    // subtracts that stale lift back out of sprite.y well after the drag/
+    // save, silently shifting the just-dragged position — which is exactly
+    // what reads as "the position I saved reverted".
     this.sprite.on('pointerdown', (e) => {
-      this._stopAnim();
+      this._cancelLift();
       if (e.pointerType !== 'mouse') this._startLongPress(e);
     });
 
@@ -100,8 +110,45 @@ export class ListStickersLayer extends BoardAnchoredLayer {
     this._pressTimer = setTimeout(() => {
       cleanup();
       this._pinned = true;
-      this._animateTo(LIFT_PX, LIFT_MS);
+      this._animateTo(this._liftPx(), LIFT_MS);
     }, LONG_PRESS_MS);
+  }
+
+  // sprite.height already bakes in sprite.scale.y (Pixi's own getter), so
+  // this tracks the board's live on-screen size — a scale-slider resize
+  // changes the lift distance right along with it instead of leaving a
+  // fixed-px lift looking too small on a bigger board or too big on a
+  // smaller one.
+  _liftPx() {
+    return this.sprite.height * LIFT_RATIO;
+  }
+
+  // BoardAnchoredLayer's own _reposition() (wired to stage.onResize — fires
+  // whenever the layer panel is toggled, not just on an actual window
+  // resize) recomputes sprite.y from scratch from the board's resting
+  // anchor, with no notion of an in-flight/settled hover lift on top of it.
+  // Left alone, toggling the panel while lifted (hovered, or long-press
+  // pinned) yanks the board back down to its resting position out from
+  // under the pointer — which then also fires a spurious pointerout/close.
+  // Reapplying the currently-applied lift after the base reposition keeps
+  // it visually lifted through the resize instead of snapping shut.
+  _reposition() {
+    super._reposition();
+    this.sprite.y -= this._appliedLift || 0;
+  }
+
+  // Undoes whatever lift is currently baked into sprite.y (in-flight or
+  // fully settled) and zeroes the bookkeeping, instead of just freezing the
+  // ticker in place — see the pointerdown handler above for why a frozen-
+  // but-nonzero _appliedLift is the actual bug, not just a visual nicety.
+  _cancelLift() {
+    this._stopAnim();
+    if (this._appliedLift) {
+      this.sprite.y += this._appliedLift;
+      this._appliedLift = 0;
+      this.sprite.emit('ng-board-closing');
+    }
+    this._openSignaled = false;
   }
 
   // Any tap that lands outside the sprite's own bounds closes a long-press-
@@ -124,7 +171,7 @@ export class ListStickersLayer extends BoardAnchoredLayer {
     // Reset so a fresh lift-open fires its own 'ng-board-opened' again —
     // without this, re-opening after a close (which never reset the flag)
     // would silently skip stickerListLayer.js's entrance reveal.
-    if (target === LIFT_PX) this._openSignaled = false;
+    if (target > 0) this._openSignaled = false;
     this._animFrom = this._appliedLift;
     this._animTo = target;
     this._animStart = performance.now();
@@ -153,7 +200,7 @@ export class ListStickersLayer extends BoardAnchoredLayer {
     // laggy relative to the gesture. _openSignaled guards it to once per
     // lift (progress keeps climbing past the threshold every tick until
     // it hits 1).
-    if (this._animTo === LIFT_PX && !this._openSignaled && progress >= OPEN_SIGNAL_PROGRESS) {
+    if (this._animTo > 0 && !this._openSignaled && progress >= OPEN_SIGNAL_PROGRESS) {
       this._openSignaled = true;
       this.sprite.emit('ng-board-opened');
     }

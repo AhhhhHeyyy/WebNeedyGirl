@@ -48,24 +48,43 @@ html, body {
   padding: 11% 9% 11% 3%;
 }
 
+/* Narrow-viewport fallback (stickerListLayer.js's _reposition() "narrow"
+   branch, toggled on #sticker-row via script.js) — floats as a standalone
+   column in the side pillarbox margin instead of a row glued below the
+   frame, for windows too short (in landscape) to comfortably fit the row.
+   No board art sits under it out there, so the asymmetric horizontal
+   nudge above doesn't apply; this just centers each icon in the column. */
+#sticker-row.vertical {
+  flex-direction: column;
+  padding: 4% 0;
+}
+
 .sticker-item {
   position: relative;
   flex: 0 0 auto;
   width: 17%;
   aspect-ratio: 1 / 1;
   pointer-events: none;
-  /* Hidden until the board has actually finished popping open — script.js's
-     pulseOpen()/pulseClose() (driven by stickerListLayer.js's 'ng-
-     stickerlist-open'/-close messages) toggle .entered on each icon in
-     turn, left-to-right, instead of every icon just sitting there
-     pre-rendered under a closed board. */
-  opacity: 0;
-  transform: scale(0.3);
+  /* Entrance/exit reveal disabled — icons are shown directly instead of
+     waiting for script.js's pulseOpen()/pulseClose() to toggle .entered
+     (that stagger is commented out in script.js). Was: opacity: 0;
+     transform: scale(0.3); with a matching .entered rule to animate in. */
+  opacity: 1;
+  transform: scale(1);
   transition: opacity 0.14s ease, transform 0.22s cubic-bezier(.34,1.56,.64,1);
 }
 .sticker-item.entered {
   opacity: 1;
   transform: scale(1);
+}
+
+/* Only one icon per "row" of the stacked column (vs. 5 abreast
+   horizontally), so it gets a much wider share of the container — value
+   mirrored in stickerListLayer.js's VERT_ICON_WIDTH_FRACTION, which sizes
+   the column's own width so this resolves back to the same absolute
+   on-screen icon size the horizontal 17% produces. */
+#sticker-row.vertical .sticker-item {
+  width: 55%;
 }
 
 .sticker-img {

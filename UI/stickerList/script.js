@@ -43,38 +43,33 @@ function postRects() {
   parent.postMessage({ type: 'ng-stickerlist-rects', rects }, location.origin);
 }
 
-// ── Entrance/exit reveal ── each icon starts hidden (see .sticker-item's
-// base opacity/scale in style.css) and only reveals itself via .entered
-// once the listStickers board has actually finished rising (mouse
-// hover-lift, or a touch long-press pin — see listStickersLayer.js's
-// 'ng-board-opened' event), left-to-right in order, one STAGGER_MS after
-// the previous one starts, so it never overlaps the container's own pop.
-// pulseClose() (fired the instant the board starts closing, see
-// 'ng-board-closing') mirrors that in reverse — the last icon to appear is
-// the first to hide, cancelling any entrance still mid-stagger — instead of
-// every icon just vanishing at once.
-const STAGGER_MS = 90;
-let pulseTimers = [];
-
-function clearPulseTimers() {
-  pulseTimers.forEach(clearTimeout);
-  pulseTimers = [];
-}
-
-function pulseOpen() {
-  clearPulseTimers();
-  items.forEach((item, i) => {
-    pulseTimers.push(setTimeout(() => item.classList.add('entered'), i * STAGGER_MS));
-  });
-}
-
-function pulseClose() {
-  clearPulseTimers();
-  const last = items.length - 1;
-  items.forEach((item, i) => {
-    pulseTimers.push(setTimeout(() => item.classList.remove('entered'), (last - i) * STAGGER_MS));
-  });
-}
+// ── Entrance/exit reveal ── DISABLED: icons are now always visible (see
+// .sticker-item's base opacity/scale in style.css, set to shown by default)
+// instead of only appearing once the listStickers board finishes its
+// hover-lift/long-press pop. pulseOpen()/pulseClose() are kept but unused —
+// left commented out below in case the staggered reveal is wanted again.
+// const STAGGER_MS = 90;
+// let pulseTimers = [];
+//
+// function clearPulseTimers() {
+//   pulseTimers.forEach(clearTimeout);
+//   pulseTimers = [];
+// }
+//
+// function pulseOpen() {
+//   clearPulseTimers();
+//   items.forEach((item, i) => {
+//     pulseTimers.push(setTimeout(() => item.classList.add('entered'), i * STAGGER_MS));
+//   });
+// }
+//
+// function pulseClose() {
+//   clearPulseTimers();
+//   const last = items.length - 1;
+//   items.forEach((item, i) => {
+//     pulseTimers.push(setTimeout(() => item.classList.remove('entered'), (last - i) * STAGGER_MS));
+//   });
+// }
 
 // ── Falling clones ──────────────────────────────────────────────────────
 // Unlimited concurrent clones; a single shared rAF loop drives all of them
@@ -162,12 +157,16 @@ addEventListener('message', (e) => {
       // left/top/width/height above.
       transform: `scale(${d.scaleX}, ${d.scaleY}) rotate(${d.rotation}rad)`,
     });
+    // 'vertical' on a too-short/wide viewport (stickerListLayer.js's narrow
+    // mode) stacks the 5 icons into a column instead of a row — see
+    // style.css's #sticker-row.vertical rule.
+    rowEl.classList.toggle('vertical', d.orientation === 'vertical');
     listEl.classList.add('positioned');
     postRects();
   } else if (d?.type === 'ng-stickerlist-open') {
-    pulseOpen();
+    // pulseOpen(); // entrance animation disabled — icons stay visible always
   } else if (d?.type === 'ng-stickerlist-close') {
-    pulseClose();
+    // pulseClose(); // exit animation disabled — icons stay visible always
   } else if (d?.type === 'ng-stickerlist-hover') {
     items[d.index]?.classList.toggle('hovering', !!d.hover);
   } else if (d?.type === 'ng-stickerlist-click') {

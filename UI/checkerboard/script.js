@@ -195,7 +195,7 @@ function glitchNoiseStep(jolting) {
   bandJoltStr = jolt;
 
   bandEls.forEach((el, i) => {
-    if (i >= G.bandCount) {
+    if (i >= TIER_CLAMP[perfTier].bandCount) {
       bandTgt[i].h = 0;
       return;
     }
@@ -229,12 +229,11 @@ const SETTLE_EPS = 0.05;
 // clip-path write to ~30/s halves that repaint cost; the lerp itself still
 // runs every frame so motion stays smooth, and a pending write is never
 // dropped, just delayed up to one interval.
-const CLIP_INTERVAL = 1000 / 30;
 let lastClipWriteAt = 0;
 function updateBandMotion(now) {
-  const doClipWrite = now - lastClipWriteAt >= CLIP_INTERVAL;
+  const doClipWrite = now - lastClipWriteAt >= TIER_CLAMP[perfTier].clipInterval;
   bandEls.forEach((el, i) => {
-    if (i >= G.bandCount) {
+    if (i >= TIER_CLAMP[perfTier].bandCount) {
       if (bandState[i] !== 'hidden') { el.style.clipPath = 'inset(0 0 100% 0)'; bandState[i] = 'hidden'; }
       return;
     }
@@ -274,25 +273,51 @@ function stepGlitch(now) {
   updateBandMotion(now);
 }
 
+// ── Perf tier ── clamps glitch cost on top of G rather than overwriting it
+// (G is already "baked defaults", not user-tunable right now, but this keeps
+// the same "ceiling over source-of-truth" shape in case a panel ever comes
+// back). 'off' is the actual floor: glitch's JS entirely stops (see
+// shouldRun()) and only the zero-JS CSS drift keeps running, so a device
+// that's still struggling at 'low' has somewhere further to go.
+let perfTier = 'high';
+const TIER_CLAMP = {
+  high:   { bandCount: G.bandCount,               clipInterval: 1000 / 30 },
+  medium: { bandCount: Math.min(G.bandCount, 1),  clipInterval: 1000 / 20 },
+  low:    { bandCount: 0,                         clipInterval: 1000 / 12 },
+  off:    { bandCount: 0,                         clipInterval: 1000 / 12 }, // unused — loop doesn't run
+};
+
+let paused = false;
 let rafId = null;
 function frame(now) {
   stepGlitch(now);
   rafId = requestAnimationFrame(frame);
 }
+function shouldRun() { return !paused && perfTier !== 'off'; }
+function ensureLoop() { if (rafId === null && shouldRun()) rafId = requestAnimationFrame(frame); }
+function stopLoop() { if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } }
 rafId = requestAnimationFrame(frame);
 
 // See BaseIframeLayer.js: display:none stops rendering but not this rAF
 // loop's JS, so stop it explicitly when hidden/backgrounded instead of
 // wasting CPU on glitch noise nobody sees. Also pauses the CSS drift
 // timelines (html.ng-paused rule in style.css) for the same reason.
+// ng-perf-tier (from shared/perf-monitor.js, broadcast via BaseIframeLayer)
+// only stops the glitch JS itself at the 'off' floor — CSS drift keeps
+// running either way, since that's compositor-only and not the actual cost.
 addEventListener('message', (e) => {
   if (e.origin !== location.origin) return;
   const d = e.data;
   if (d?.type === 'ng-effect-pause') {
-    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    paused = true;
+    stopLoop();
     document.documentElement.classList.add('ng-paused');
   } else if (d?.type === 'ng-effect-resume') {
-    if (rafId === null) rafId = requestAnimationFrame(frame);
+    paused = false;
     document.documentElement.classList.remove('ng-paused');
+    ensureLoop();
+  } else if (d?.type === 'ng-perf-tier') {
+    perfTier = d.tier;
+    if (perfTier === 'off') stopLoop(); else ensureLoop();
   }
 });

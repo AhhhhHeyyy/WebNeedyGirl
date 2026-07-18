@@ -1,4 +1,5 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
+import { LOGICAL_W } from '../core/Stage.js';
 
 // Renders the 5 clickable sticker icons on top of the "listStickers" board
 // (UI/list-stickers.png, see listStickersLayer.js) plus their click-to-spawn
@@ -27,6 +28,19 @@ import { BaseIframeLayer } from './BaseIframeLayer.js';
 // of native boundary events on a moving target sidesteps that entirely.
 //
 const Z = 22; // below RETRO_FRONTMOST_Z (25) so retroFilter's camera-lens overlay still reads as the true topmost post-process
+
+// Fraction of the vertical column's own width an icon occupies in narrow
+// mode (mirrored in UI/stickerList/style.css's `#sticker-row.vertical
+// .sticker-item` rule — the two can't literally share a constant across
+// files, so keep them in sync by hand). Only one icon sits per "row" of the
+// stacked column, unlike the horizontal layout's 17% (sized for 5 abreast).
+const VERT_ICON_WIDTH_FRACTION = 0.55;
+
+// How much bigger the empty left/right pillarbox margin (see _reposition())
+// needs to be than the narrow column's own width before it's considered
+// roomy enough to actually host it — a bare "margin > colWidth" would let
+// the column touch both the screen edge and Frame 1 with ~0 to spare.
+const NARROW_MARGIN_FACTOR = 1.15;
 
 export class StickerListLayer extends BaseIframeLayer {
   constructor(opts) {
@@ -57,8 +71,22 @@ export class StickerListLayer extends BaseIframeLayer {
       const i = this._indexAt(e.clientX, e.clientY);
       if (i !== -1) this._postClick(i);
     };
+    // Capture phase, on window (ahead of the canvas in the propagation
+    // path) — a mousedown/tap on a sticker icon still lands on the Pixi
+    // board sprite underneath (same all-or-nothing iframe pointer-events
+    // reason as above), which would otherwise fire the board's own
+    // pointerdown handling (listStickersLayer.js's drag-start and its
+    // hover-lift cancel/close). Stopping it here before it ever reaches the
+    // canvas keeps the board lifted and undragged for what's actually just
+    // a click-to-spawn — the separate, later 'click' event below is
+    // untouched by this and still fires normally.
+    this._onWindowPointerDown = (e) => {
+      if (!this.visible) return;
+      if (this._indexAt(e.clientX, e.clientY) !== -1) e.stopPropagation();
+    };
     window.addEventListener('pointermove', this._onWindowPointerMove);
     window.addEventListener('click', this._onWindowClick);
+    window.addEventListener('pointerdown', this._onWindowPointerDown, true);
 
     this._onMessage = (e) => {
       if (e.origin !== window.location.origin || e.source !== this.el.contentWindow) return;
@@ -151,7 +179,8 @@ export class StickerListLayer extends BaseIframeLayer {
 
   _reposition() {
     const board = this.manager.get('listStickers');
-    if (!board || !board.sprite) return;
+    const frame1 = this.manager.get('frame1');
+    if (!board || !board.sprite || !frame1 || !frame1.sprite) return;
 
     const sprite = board.sprite;
     const bounds = sprite.getLocalBounds();
@@ -161,22 +190,86 @@ export class StickerListLayer extends BaseIframeLayer {
     const screenW = w * scale;
     const screenH = h * scale;
     const t = this._transform;
-    const centerX = this.stage.root.position.x + (sprite.x + t.x) * scale;
-    const centerY = this.stage.root.position.y + (sprite.y + t.y) * scale;
+    // sprite.x/y already bakes in board._anchorX/Y's own per-axis stretch
+    // (BoardAnchoredLayer._reposition(), tracking heading.boarding's
+    // non-uniform edge-to-edge stretch) — but t.x/t.y is a flat logical-px
+    // offset on top of that, so without applying the same per-axis stretch
+    // to it too, this panel's own x/y nudge holds a fixed size in logical
+    // units while the board underneath it stretches non-uniformly around
+    // it, and the two drift apart (varying window/panel aspect ratio) until
+    // the row lands somewhere unintended, sometimes overlapping the frame
+    // above. board._stretchFactors is the same private helper
+    // BoardAnchoredLayer used to compute sprite.x/y itself.
+    const { stretchX, stretchY } = board._stretchFactors(sprite.parent);
 
-    const pos = {
-      left: centerX - screenW / 2,
-      top: centerY - screenH / 2,
-      width: screenW,
-      height: screenH,
-      scaleX: t.scaleX,
-      scaleY: t.scaleY,
-      rotation: t.rotation,
-    };
+    // Frame 1's own box — re-derived from its live sprite.x/y/width/height
+    // on every tick (same pattern holographicLayer.js uses to track Frame
+    // 1) so both the normal horizontal anchor and the narrow-mode vertical
+    // one below stay flush with the frame at any window size/aspect ratio,
+    // not just the one they were tuned at. Frame 1 is always visible, unlike
+    // the listStickers board sprite this panel otherwise tracks (that one
+    // stays invisible — see manifest.json/state.json — so its authored
+    // position is an arbitrary leftover, fine as a size/shape reference but
+    // not as an anchor point).
+    const frameSprite = frame1.sprite;
+    const frameBounds = frameSprite.getLocalBounds();
+    const frameScreenW = frameBounds.width * frameSprite.scale.x * scale;
+    const frameScreenH = frameBounds.height * frameSprite.scale.y * scale;
+    const frameLeftX = this.stage.root.position.x + frameSprite.x * scale - frameScreenW / 2;
+    const frameTopY = this.stage.root.position.y + frameSprite.y * scale - frameScreenH / 2;
+
+    // Empty pillarbox margin to the left of the scaled 1920x1080 composition
+    // — nonzero whenever the viewport is wider-relative-to-height than 16:9
+    // (Stage.resize()'s scale is then height-bound, leaving spare width on
+    // both sides), which is exactly the "screen height too short in
+    // landscape" case a user hits on short/wide displays. Below that
+    // threshold there's nowhere to put a side column, so this keeps falling
+    // back to the normal below-frame row.
+    const marginPx = this.stage.root.position.x - (LOGICAL_W / 2) * scale;
+    // Icon size stays visually consistent between modes: this is the same
+    // absolute on-screen icon width the horizontal row uses (17% of
+    // screenW, style.css's .sticker-item), backed out into the column width
+    // that yields it again once the CSS shrinks it to VERT_ICON_WIDTH_FRACTION.
+    const colWidth = (0.17 * screenW) / VERT_ICON_WIDTH_FRACTION;
+    const narrow = marginPx > colWidth * NARROW_MARGIN_FACTOR;
+
+    let pos;
+    if (narrow) {
+      // Floats independently in the side margin instead of tracking the
+      // listStickers board underneath (there's no board art out there to
+      // stay glued to) — so the user's tuned x/y nudge, meant for the
+      // below-frame horizontal row, is intentionally not reapplied here;
+      // only scale/rotation still carry over.
+      pos = {
+        left: (marginPx - colWidth) / 2,
+        top: frameTopY,
+        width: colWidth,
+        height: frameScreenH * 0.85,
+        scaleX: t.scaleX,
+        scaleY: t.scaleY,
+        rotation: t.rotation,
+        orientation: 'vertical',
+      };
+    } else {
+      const centerY = this.stage.root.position.y + (sprite.y + t.y * stretchY) * scale;
+      const leftX = frameLeftX + t.x * stretchX * scale;
+      pos = {
+        left: leftX,
+        top: centerY - screenH / 2,
+        width: screenW,
+        height: screenH,
+        scaleX: t.scaleX,
+        scaleY: t.scaleY,
+        rotation: t.rotation,
+        orientation: 'horizontal',
+      };
+    }
+
     const prev = this._lastPos;
     if (prev && Math.abs(prev.left - pos.left) < 0.05 && Math.abs(prev.top - pos.top) < 0.05 &&
         Math.abs(prev.width - pos.width) < 0.05 && Math.abs(prev.height - pos.height) < 0.05 &&
-        prev.scaleX === pos.scaleX && prev.scaleY === pos.scaleY && prev.rotation === pos.rotation) return;
+        prev.scaleX === pos.scaleX && prev.scaleY === pos.scaleY && prev.rotation === pos.rotation &&
+        prev.orientation === pos.orientation) return;
     this._lastPos = pos;
 
     this.el.contentWindow?.postMessage({ type: 'ng-stickerlist-position', ...pos }, window.location.origin);
@@ -220,6 +313,7 @@ export class StickerListLayer extends BaseIframeLayer {
     this.stage.app.ticker.remove(this._tick);
     window.removeEventListener('pointermove', this._onWindowPointerMove);
     window.removeEventListener('click', this._onWindowClick);
+    window.removeEventListener('pointerdown', this._onWindowPointerDown, true);
     window.removeEventListener('message', this._onMessage);
     super.destroy();
   }
