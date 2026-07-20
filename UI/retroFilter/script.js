@@ -54,16 +54,32 @@ function wireOverlay({ key, el, btn, colorInp, opaInp, opaMaxInp, pctEl, apply }
   refresh();
 }
 
+/* Line thickness + gap both scale with viewport height (reference: 800px
+   tall == the original fixed 1px line / 2px gap), so the pattern reads as
+   the same relative density on a phone as on a big monitor instead of
+   looking coarse when the window shrinks or the window grows. */
+function scanlineMetrics() {
+  const scale = window.innerHeight / 800;
+  const line = Math.max(1, Math.round(scale));
+  const gap = Math.max(1, Math.round(scale * 2));
+  return { line, gap };
+}
+
+function applyScanline(hex, opa) {
+  const { line, gap } = scanlineMetrics();
+  const t = hexToRgba(hex, 0), s = hexToRgba(hex, opa);
+  document.getElementById('scanline').style.backgroundImage =
+    `repeating-linear-gradient(0deg, ${t} 0px, ${t} ${gap}px, ${s} ${gap}px, ${s} ${gap + line}px)`;
+}
+
 wireOverlay({
   key: 'scanline', el: document.getElementById('scanline'), btn: document.getElementById('scanline-btn'),
   colorInp: document.getElementById('scanline-color'), opaInp: document.getElementById('scanline-opa'),
   opaMaxInp: document.getElementById('scanline-opa-max'), pctEl: document.getElementById('scanline-pct'),
-  apply: (hex, opa) => {
-    const t = hexToRgba(hex, 0), s = hexToRgba(hex, opa);
-    document.getElementById('scanline').style.backgroundImage =
-      `repeating-linear-gradient(0deg, ${t} 0px, ${t} 2px, ${s} 2px, ${s} 3px)`;
-  },
+  apply: applyScanline,
 });
+
+addEventListener('resize', () => applyScanline(S.scanline.hex, S.scanline.opa));
 
 wireOverlay({
   key: 'vignette', el: document.getElementById('vignette'), btn: document.getElementById('vignette-btn'),
