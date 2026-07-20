@@ -7,6 +7,7 @@ import { BaseLottieLayer } from './layers/BaseLottieLayer.js';
 import { BaseIframeLayer } from './layers/BaseIframeLayer.js';
 import { GroupLayer } from './layers/GroupLayer.js';
 import { spawnNestedScene3Popup, clientToLogical, popupTuning, prewarmRendererPool } from './layers/nestedScene3PopupSpawner.js';
+import { initMobileWiden } from './core/mobileWiden.js';
 
 const STORAGE_KEY = 'needygirl-layer-layout';
 
@@ -246,6 +247,12 @@ async function boot() {
     try { manager.applySnapshot(JSON.parse(saved)); }
     catch (err) { console.error('Ignoring corrupt saved layout:', err); }
   }
+
+  // Widens Frame 1's box + the chat panel to reclaim pillarbox margin on
+  // narrow/mobile viewports — see mobileWiden.js. Run after the saved/default
+  // layout is settled so its "home" anchors reflect wherever these actually
+  // ended up, not manifest defaults a saved layout is about to override.
+  initMobileWiden({ stage, manager });
 
   // The panel's own "dark.nestedScene3" never plays itself — it's just the
   // size/rotation template for pop-ups (see nestedScene3PopupSpawner.js), so

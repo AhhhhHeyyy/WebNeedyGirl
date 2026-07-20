@@ -1,5 +1,4 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
-import { LOGICAL_W } from '../core/Stage.js';
 
 // Renders the 5 clickable sticker icons on top of the "listStickers" board
 // (UI/list-stickers.png, see listStickersLayer.js) plus their click-to-spawn
@@ -60,6 +59,13 @@ const VERT_ICON_WIDTH_FRACTION = 0.55;
 // roomy enough to actually host it — a bare "margin > colWidth" would let
 // the column touch both the screen edge and Frame 1 with ~0 to spare.
 const NARROW_MARGIN_FACTOR = 1.15;
+
+// Narrow/mobile mode trades a hover-precise mouse for an imprecise finger,
+// so the column's icons are sized up beyond what the horizontal row uses
+// (see colWidth below) — easier to land a tap on, at the cost of fitting
+// fewer of the margin's other uses. Purely a mobile affordance; the
+// horizontal row (desktop/wide viewports) is untouched.
+const MOBILE_ICON_SCALE = 1.5;
 
 export class StickerListLayer extends BaseIframeLayer {
   constructor(opts) {
@@ -288,20 +294,33 @@ export class StickerListLayer extends BaseIframeLayer {
     const frameLeftX = this.stage.root.position.x + frameSprite.x * scale - frameScreenW / 2;
     const frameTopY = this.stage.root.position.y + frameSprite.y * scale - frameScreenH / 2;
 
-    // Empty pillarbox margin to the left of the scaled 1920x1080 composition
-    // — nonzero whenever the viewport is wider-relative-to-height than 16:9
-    // (Stage.resize()'s scale is then height-bound, leaving spare width on
-    // both sides), which is exactly the "screen height too short in
-    // landscape" case a user hits on short/wide displays. Below that
-    // threshold there's nowhere to put a side column, so this keeps falling
-    // back to the normal below-frame row.
-    const marginPx = this.stage.root.position.x - (LOGICAL_W / 2) * scale;
-    // Icon size stays visually consistent between modes: this is the same
-    // absolute on-screen icon width the horizontal row uses (17% of
-    // screenW, style.css's .sticker-item), backed out into the column width
-    // that yields it again once the CSS shrinks it to VERT_ICON_WIDTH_FRACTION.
-    const colWidth = (0.17 * screenW) / VERT_ICON_WIDTH_FRACTION;
+    // Empty margin to the left of Frame 1's own live box — nonzero whenever
+    // the viewport is wider-relative-to-height than 16:9 (Stage.resize()'s
+    // scale is then height-bound, leaving spare width on both sides), which
+    // is exactly the "screen height too short in landscape" case a user hits
+    // on short/wide displays. Below that threshold there's nowhere to put a
+    // side column, so this keeps falling back to the normal below-frame row.
+    // Deliberately Frame 1's actual left edge (frameLeftX), not the
+    // theoretical edge of the un-widened 1920x1080 composition — mobileWiden.js
+    // may have already pushed Frame 1 outward to reclaim part of that margin
+    // for itself, and this has to treat whatever's left of Frame 1's real
+    // edge as the only space actually free, or the column ends up floating
+    // on top of Frame 1 instead of beside it.
+    const marginPx = frameLeftX;
+    // Icon size is scaled up from what the horizontal row uses (17% of
+    // screenW, style.css's .sticker-item) by MOBILE_ICON_SCALE — backed out
+    // into the column width that yields it again once the CSS shrinks it to
+    // VERT_ICON_WIDTH_FRACTION.
+    const colWidth = (0.17 * screenW * MOBILE_ICON_SCALE) / VERT_ICON_WIDTH_FRACTION;
     const narrow = marginPx > colWidth * NARROW_MARGIN_FACTOR;
+
+    // Falling-clone size (script.js's spawnClone) is authored in fixed CSS
+    // px against a ~1920x1080 desktop viewport (where `scale` is ~1) — on a
+    // much smaller mobile viewport that same fixed size would read as
+    // oversized, so it's scaled down by the same logical-to-screen ratio
+    // everything else on stage uses. Capped at 1 so it never grows past its
+    // authored size on a desktop viewport bigger than 1920x1080.
+    const cloneScale = Math.min(1, scale);
 
     let pos;
     if (narrow) {
@@ -319,6 +338,7 @@ export class StickerListLayer extends BaseIframeLayer {
         scaleY: t.scaleY,
         rotation: t.rotation,
         orientation: 'vertical',
+        cloneScale,
       };
     } else {
       const centerY = this.stage.root.position.y + (sprite.y + t.y * stretchY) * scale;
@@ -332,6 +352,7 @@ export class StickerListLayer extends BaseIframeLayer {
         scaleY: t.scaleY,
         rotation: t.rotation,
         orientation: 'horizontal',
+        cloneScale,
       };
     }
 
@@ -339,7 +360,7 @@ export class StickerListLayer extends BaseIframeLayer {
     if (prev && Math.abs(prev.left - pos.left) < 0.05 && Math.abs(prev.top - pos.top) < 0.05 &&
         Math.abs(prev.width - pos.width) < 0.05 && Math.abs(prev.height - pos.height) < 0.05 &&
         prev.scaleX === pos.scaleX && prev.scaleY === pos.scaleY && prev.rotation === pos.rotation &&
-        prev.orientation === pos.orientation) return;
+        prev.orientation === pos.orientation && prev.cloneScale === pos.cloneScale) return;
     this._lastPos = pos;
 
     this.el.contentWindow?.postMessage({ type: 'ng-stickerlist-position', ...pos }, window.location.origin);

@@ -83,8 +83,14 @@ let rafId = null;
 let paused = false;
 let lastTs = 0;
 
+// Forwarded on every 'ng-stickerlist-position' message (see
+// stickerListLayer.js) — the fixed CSS-px size below was tuned against a
+// ~1920x1080 desktop viewport, so it's scaled down by this ratio on a
+// smaller mobile one instead of reading as oversized there.
+let cloneScale = 1;
+
 function spawnClone(file) {
-  const size = 96 + Math.random() * 64;
+  const size = (96 + Math.random() * 64) * cloneScale;
   const x = Math.random() * Math.max(0, innerWidth - size);
   const y = Math.random() * innerHeight * 0.6;
   const rot = (Math.random() - 0.5) * 60;
@@ -149,6 +155,7 @@ addEventListener('message', (e) => {
   if (e.origin !== location.origin) return;
   const d = e.data;
   if (d?.type === 'ng-stickerlist-position') {
+    if (typeof d.cloneScale === 'number') cloneScale = d.cloneScale;
     Object.assign(listEl.style, {
       left: `${d.left}px`, top: `${d.top}px`, width: `${d.width}px`, height: `${d.height}px`,
       // scale/rotate are the panel's own layer adjustments (see
