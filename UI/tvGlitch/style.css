@@ -1,0 +1,26 @@
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+
+/* This effect is a screen-space overlay meant to sit in FRONT of the whole
+   composited scene (see src/layers/tvGlitchLayer.js, which pins z-index the
+   same way retroFilterLayer.js does). The canvas paints nothing while idle —
+   only script.js's triggerBurst() lights it up — so unlike retroFilter this
+   has no baked CSS layers of its own, everything is drawn per-frame. */
+#gl {
+  display: block; position: fixed; inset: 0;
+  width: 100vw; height: 100vh; touch-action: none; pointer-events: none;
+}
+
+/* ── Color picker (mirrors UI/retroFilter/style.css) ── */
+.ov-head { display: flex; align-items: center; gap: 7px; margin: 10px 0 13px; }
+.ov-head .sg-label { flex: 1; }
+.cpick-wrap {
+  flex-shrink: 0; width: 30px; height: 22px; border-radius: 7px; overflow: hidden;
+  box-shadow: 0 2px 8px rgba(160,128,205,0.32), inset 0 0 0 1px rgba(255,255,255,0.75);
+  cursor: pointer; display: block;
+}
+input[type=color] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 100%; border: none; cursor: pointer; padding: 0; background: none;
+}
+input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type=color]::-webkit-color-swatch { border: none; }

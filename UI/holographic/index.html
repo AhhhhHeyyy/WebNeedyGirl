@@ -10,98 +10,128 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<canvas id="gl"></canvas>
-<div id="retro"></div>   <!-- scan line overlay -->
-<div id="cf"></div>      <!-- colour filter overlay -->
+<!-- Clipped to Frame 1's live on-screen box/silhouette (positioned by script.js
+     from the ng-holo-frame1-box postMessage sent by holographicLayer.js) —
+     the panel below is a sibling, NOT inside this, so it stays full-viewport
+     and isn't cropped to Frame 1's (often small) box. -->
+<div id="holo-clip">
+  <canvas id="gl"></canvas>
+  <div id="retro"></div>   <!-- scan line overlay -->
+  <div id="cf"></div>      <!-- colour filter overlay -->
+</div>
 
 <button id="panel-toggle" title="Controls">⚙</button>
 
 <div id="panel" class="closed">
 
-  <!-- ── Motion ── -->
-  <div class="sec">Motion</div>
-  <div class="sg" id="sg-speed"></div>
-  <div class="sg" id="sg-steps"></div>
-  <div class="sg" id="sg-ring"></div>
-
-  <div class="div"></div>
-
-  <!-- ── Shape ── -->
-  <div class="sec">Shape</div>
-  <div class="sg" id="sg-ncen"></div>
-  <div class="sg" id="sg-warp"></div>
-  <div class="sg" id="sg-damp"></div>
-  <div class="sg" id="sg-dspd"></div>
-
-  <div class="div"></div>
-
-  <!-- ── Color ── -->
-  <div class="sec">Color</div>
-  <!-- vortex base colour picker -->
+  <!-- ── Mode ── every slider/overlay below belongs to whichever mode is
+       selected here — Normal/Yandere/Drug each carry their own fully
+       independent set of values, edited in place with no shared "base".
+       Auto hides the editable section entirely: there's no single fixed
+       profile to show while StatStore drives a continuous blend between
+       two of them. -->
+  <div class="sec">Mode</div>
   <div class="color-row">
-    <span class="sg-label">Base Color</span>
-    <label class="cpick-wrap" title="Vortex base color">
-      <input type="color" id="vortex-color" value="#D1CCDE">
-    </label>
+    <span class="sg-label">Editing</span>
+    <select id="mp-select" class="mp-select">
+      <option value="">Auto (StatStore)</option>
+      <option value="normal">Normal</option>
+      <option value="yandere">Yandere</option>
+      <option value="drug">Drug</option>
+    </select>
   </div>
-  <div class="sg" id="sg-hue"></div>
-  <div class="sg" id="sg-vig"></div>
+  <div class="sg mp-hidden" id="sg-mp-intensity"></div>
 
   <div class="div"></div>
 
-  <!-- ── Sparkle ── -->
-  <div class="sec">Sparkle</div>
-  <div class="sg" id="sg-ssize"></div>
-  <div class="sg" id="sg-srate"></div>
+  <div id="mode-fields" class="mp-hidden">
 
-  <div class="div"></div>
+    <!-- ── Motion ── -->
+    <div class="sec">Motion</div>
+    <div class="sg" id="sg-speed"></div>
+    <div class="sg" id="sg-steps"></div>
+    <div class="sg" id="sg-ring"></div>
 
-  <!-- ── Overlays ── -->
-  <div class="sec">Overlays</div>
+    <div class="div"></div>
 
-  <!-- scan line -->
-  <div class="ov-block">
-    <div class="ov-head">
-      <button class="pbtn on" id="retro-btn">▦ Scanline</button>
-      <label class="cpick-wrap" title="Scanline color">
-        <input type="color" id="retro-color" value="#ffffff">
+    <!-- ── Shape ── -->
+    <div class="sec">Shape</div>
+    <div class="sg" id="sg-ncen"></div>
+    <div class="sg" id="sg-warp"></div>
+    <div class="sg" id="sg-damp"></div>
+    <div class="sg" id="sg-dspd"></div>
+
+    <div class="div"></div>
+
+    <!-- ── Color ── -->
+    <div class="sec">Color</div>
+    <!-- vortex base colour picker -->
+    <div class="color-row">
+      <span class="sg-label">Base Color</span>
+      <label class="cpick-wrap" title="Vortex base color">
+        <input type="color" id="vortex-color" value="#D1CCDE">
       </label>
-      <span class="sg-val" id="retro-pct">11%</span>
     </div>
-    <div class="sg-track">
-      <input type="range" id="retro-opa" min="0" max="0.5" step="0.01" value="0.11">
-      <div class="max-wrap">
-        <span class="max-lbl">max</span>
-        <input type="number" class="max-inp" id="retro-opa-max" value="0.5" step="0.01">
+    <div class="sg" id="sg-hue"></div>
+    <div class="sg" id="sg-vig"></div>
+
+    <div class="div"></div>
+
+    <!-- ── Sparkle ── -->
+    <div class="sec">Sparkle</div>
+    <div class="sg" id="sg-ssize"></div>
+    <div class="sg" id="sg-srate"></div>
+    <div class="btn-row">
+      <button class="pbtn on" id="sparkle-btn">✦ Sparkle</button>
+    </div>
+
+    <div class="div"></div>
+
+    <!-- ── Overlays ── -->
+    <div class="sec">Overlays</div>
+
+    <!-- scan line -->
+    <div class="ov-block">
+      <div class="ov-head">
+        <button class="pbtn on" id="retro-btn">▦ Scanline</button>
+        <label class="cpick-wrap" title="Scanline color">
+          <input type="color" id="retro-color" value="#ffffff">
+        </label>
+        <span class="sg-val" id="retro-pct">11%</span>
+      </div>
+      <div class="sg-track">
+        <input type="range" id="retro-opa" min="0" max="0.5" step="0.01" value="0.11">
+        <div class="max-wrap">
+          <span class="max-lbl">max</span>
+          <input type="number" class="max-inp" id="retro-opa-max" value="0.5" step="0.01">
+        </div>
       </div>
     </div>
-  </div>
 
-  <!-- colour filter -->
-  <div class="ov-block" style="margin-top:12px">
-    <div class="ov-head">
-      <button class="pbtn on" id="cf-btn">◐ Filter</button>
-      <label class="cpick-wrap" title="Filter color">
-        <input type="color" id="cf-color" value="#ffb8ce">
-      </label>
-      <span class="sg-val" id="cf-pct">15%</span>
-    </div>
-    <div class="sg-track">
-      <input type="range" id="cf-opa" min="0" max="0.5" step="0.01" value="0.15">
-      <div class="max-wrap">
-        <span class="max-lbl">max</span>
-        <input type="number" class="max-inp" id="cf-opa-max" value="0.5" step="0.01">
+    <!-- colour filter -->
+    <div class="ov-block" style="margin-top:12px">
+      <div class="ov-head">
+        <button class="pbtn on" id="cf-btn">◐ Filter</button>
+        <label class="cpick-wrap" title="Filter color">
+          <input type="color" id="cf-color" value="#ffb8ce">
+        </label>
+        <span class="sg-val" id="cf-pct">15%</span>
+      </div>
+      <div class="sg-track">
+        <input type="range" id="cf-opa" min="0" max="0.5" step="0.01" value="0.15">
+        <div class="max-wrap">
+          <span class="max-lbl">max</span>
+          <input type="number" class="max-inp" id="cf-opa-max" value="0.5" step="0.01">
+        </div>
       </div>
     </div>
-  </div>
+
+  </div> <!-- /#mode-fields -->
 
   <div class="div"></div>
 
   <div class="btn-row">
-    <button class="pbtn on" id="sparkle-btn">✦ Sparkle</button>
     <button class="pbtn" id="save-btn">↓ Save</button>
-  </div>
-  <div class="btn-row">
     <button class="pbtn" id="reset-btn">↺ Reset</button>
   </div>
 </div>

@@ -67,6 +67,12 @@
       "label": "StickerList",
       "folder": "UI/stickerList",
       "module": "layers/stickerListLayer.js"
+    },
+    {
+      "id": "tvGlitch",
+      "label": "TvGlitch",
+      "folder": "UI/tvGlitch",
+      "module": "layers/tvGlitchLayer.js"
     }
   ],
   "groups": [

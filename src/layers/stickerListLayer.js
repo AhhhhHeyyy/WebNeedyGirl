@@ -28,6 +28,18 @@ import { BaseIframeLayer } from './BaseIframeLayer.js';
 //
 const Z = 22; // below RETRO_FRONTMOST_Z (25) so retroFilter's camera-lens overlay still reads as the true topmost post-process
 
+// retroFilter/man/pixelCursor/tvGlitch all pin themselves to their own fixed
+// always-on-top z-index (see each file's own FRONTMOST_Z) regardless of
+// where they sit in the panel's order — they never actually compete for
+// "topmost in the Pixi/chat stack" position, so one of them landing after
+// this layer in manager.layers (e.g. tvGlitch, added after stickerList) must
+// not count as "something is in front of me" below. Without this, the plain
+// "am I literally the last layer" check that used to work here breaks the
+// instant any of these fixed-z layers is appended afterward, wrongly
+// dropping this behind the canvas (and chat.chatboard's DOM overlay above
+// it) even though none of those fixed-z layers actually needed it to.
+const ALWAYS_FRONTMOST_IDS = new Set(['retroFilter', 'man', 'pixelCursor', 'tvGlitch']);
+
 // Extra CSS-px padding around the icons' own union box that still counts as
 // "the sticker list" for main.js's stage-area click handler (see
 // containsPointWithDeadZone()) — a fat-finger tap that lands just outside a
@@ -450,7 +462,9 @@ export class StickerListLayer extends BaseIframeLayer {
   // (see _indexAt) regardless of what's visually covering them.
   setZIndex(_i) {
     const layers = this.manager.layers;
-    const isFrontmost = layers.length > 0 && layers[layers.length - 1] === this;
+    const selfIndex = layers.indexOf(this);
+    const isFrontmost = selfIndex !== -1 &&
+      layers.slice(selfIndex + 1).every(l => ALWAYS_FRONTMOST_IDS.has(l.id));
     this.el.style.zIndex = isFrontmost ? String(Z) : '5';
   }
 

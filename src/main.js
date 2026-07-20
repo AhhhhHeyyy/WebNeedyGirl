@@ -2,20 +2,25 @@ import { Stage } from './core/Stage.js';
 import { LayerManager } from './core/LayerManager.js';
 import { LayerPanel } from './ui/LayerPanel.js';
 import { PopupTuningPanel } from './ui/PopupTuningPanel.js';
+import { StatDebugPanel } from './ui/StatDebugPanel.js';
 import { BaseImageLayer } from './layers/BaseImageLayer.js';
 import { BaseLottieLayer } from './layers/BaseLottieLayer.js';
 import { BaseIframeLayer } from './layers/BaseIframeLayer.js';
 import { GroupLayer } from './layers/GroupLayer.js';
 import { spawnNestedScene3Popup, clientToLogical, popupTuning, prewarmRendererPool } from './layers/nestedScene3PopupSpawner.js';
 import { initMobileWiden } from './core/mobileWiden.js';
+import { StatStore } from './core/StatStore.js';
+import { EffectDirector } from './core/EffectDirector.js';
 
 const STORAGE_KEY = 'needygirl-layer-layout';
+const STAT_STORAGE_KEY = 'needygirl-stat-store';
 
 const bgContainer = document.getElementById('bg-effect-layer');
 const pixiContainer = document.getElementById('pixi-stage');
 const lottieContainer = document.getElementById('lottie-layer');
 const panelMount = document.getElementById('layer-panel-mount');
 const popupTuningMount = document.getElementById('popup-tuning-mount');
+const statDebugMount = document.getElementById('stat-debug-mount');
 const saveBtn = document.getElementById('layer-save-btn');
 const resetBtn = document.getElementById('layer-reset-btn');
 const loadingScreen = document.getElementById('loading-screen');
@@ -178,8 +183,10 @@ async function boot() {
     onTestSpawn: () => spawnNestedScene3Popup(0, 0, { stage, manager, lottieContainer })
       .catch(err => console.error('Failed to spawn Nested Scene 3 pop-up:', err)),
   });
+  new StatDebugPanel({ mountEl: statDebugMount });
   saveBtn.onclick = () => {
     NeedyGirlState.set(STORAGE_KEY, JSON.stringify(manager.getSnapshot()));
+    NeedyGirlState.set(STAT_STORAGE_KEY, JSON.stringify(StatStore.getSnapshot()));
     saveBtn.classList.add('on');
     setTimeout(() => saveBtn.classList.remove('on'), 500);
   };
@@ -187,6 +194,8 @@ async function boot() {
     if (!defaults) return; // still loading; nothing to reset to yet
     NeedyGirlState.remove(STORAGE_KEY);
     manager.applySnapshot(defaults);
+    NeedyGirlState.remove(STAT_STORAGE_KEY);
+    StatStore.reset();
   };
 
   const requests = [
@@ -247,6 +256,16 @@ async function boot() {
     try { manager.applySnapshot(JSON.parse(saved)); }
     catch (err) { console.error('Ignoring corrupt saved layout:', err); }
   }
+  const savedStats = NeedyGirlState.get(STAT_STORAGE_KEY);
+  if (savedStats) {
+    try { StatStore.applySnapshot(JSON.parse(savedStats)); }
+    catch (err) { console.error('Ignoring corrupt saved stats:', err); }
+  }
+
+  // Every layer (including holographic/retroFilter/frame1, which
+  // EffectDirector's very first dispatch needs) is loaded and in the
+  // manager by this point — safe to start reacting to StatStore changes.
+  EffectDirector.start({ stage, manager, lottieContainer });
 
   // Widens Frame 1's box + the chat panel to reclaim pillarbox margin on
   // narrow/mobile viewports — see mobileWiden.js. Run after the saved/default

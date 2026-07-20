@@ -1,3 +1,12 @@
+/* ── Frame 1 clip wrapper ── positioned/sized by the parent's
+   ng-holo-frame1-box message (see holographicLayer.js's _frame1Box()) and
+   masked to Frame 1's own painted silhouette — the web equivalent of
+   clipping this layer to another. Path is one level up from this document
+   (UI/holographic/ -> UI/Frame 1.png). */
+const holoClip = document.getElementById('holo-clip');
+holoClip.style.maskImage = 'url("../Frame 1.png")';
+holoClip.style.webkitMaskImage = 'url("../Frame 1.png")';
+
 /* ── WebGL ── */
 const canvas = document.getElementById('gl');
 const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: true });
@@ -160,6 +169,47 @@ const U={
   pal_a:        gl.getUniformLocation(prog,'u_pal_a'),
 };
 
+/* ── Per-mode profiles ── every visual parameter (Motion/Shape/Color/Sparkle
+   uniforms, vortex base colour, and the two baked overlay layers) is a
+   fully independent set per mode (normal/yandere/drug) — not one shared
+   base with small deltas layered on top (the earlier "Mode Preset"
+   design). Picking a mode in the panel's dropdown edits THAT profile's own
+   full set of sliders with zero cross-talk between modes. 'normal' plays
+   when no stat-driven mode is active; EffectDirector's ng-holo-mode picks
+   which profile — and how strongly, via intensity — to blend toward each
+   frame (see frame() below). */
+const PROFILE_KEYS=['normal','yandere','drug'];
+
+const PROFILE_DEFAULTS={
+  normal:{
+    speed:2.45, steps:0.06, ring_density:5.50,
+    warp:0.00, drift_amp:0.50, drift_speed:0.17,
+    hue:0.88, vignette:1.00,
+    sparkle_size:12.0, sparkle_rate:0.39, sparkle:1.0, num_centers:6.0,
+    vortexHex:'#D1CCDE',
+    retro:{hex:'#ffffff',opa:0.11,off:false},
+    cf:{hex:'#ffb8ce',opa:0.15,off:false},
+  },
+  yandere:{
+    speed:1.00, steps:0.06, ring_density:2.00,
+    warp:0.00, drift_amp:0.30, drift_speed:0.10,
+    hue:0.92, vignette:1.00,
+    sparkle_size:10.0, sparkle_rate:0.55, sparkle:1.0, num_centers:4.0,
+    vortexHex:'#ffb3d9',
+    retro:{hex:'#ffffff',opa:0.11,off:false},
+    cf:{hex:'#ff9fd0',opa:0.20,off:false},
+  },
+  drug:{
+    speed:4.50, steps:0.06, ring_density:9.50,
+    warp:0.40, drift_amp:0.45, drift_speed:0.30,
+    hue:-0.35, vignette:1.00,
+    sparkle_size:14.0, sparkle_rate:0.30, sparkle:1.0, num_centers:8.0,
+    vortexHex:'#7fd8ff',
+    retro:{hex:'#00ffe0',opa:0.16,off:false},
+    cf:{hex:'#7fe8ff',opa:0.20,off:false},
+  },
+};
+
 /* ── Persistence ── auto-saves every panel change (via shared/state-sync.js,
    backed by state.json on disk) so a reload restores the same look instead
    of resetting to the coded defaults below, and so it's shared across any
@@ -173,23 +223,19 @@ function loadSaved(){
   catch { return {}; }
 }
 function saveState(){
-  NeedyGirlState.set(STORAGE_KEY, JSON.stringify({
-    V, vortexHex,
-    retro:{ hex:retroHex, opa:retroOpa, off:retroEl.classList.contains('off') },
-    cf:{ hex:cfHex, opa:cfOpa, off:cfEl.classList.contains('off') },
-  }));
+  NeedyGirlState.set(STORAGE_KEY, JSON.stringify({ profiles:PROFILES }));
 }
 const saved=loadSaved();
 
-/* ── State ── */
-const V={
-  speed:2.45, steps:0.06, ring_density:5.50,
-  warp:0.00,  drift_amp:0.50, drift_speed:0.17,
-  hue:0.88,   vignette:1.00,
-  sparkle_size:12.0, sparkle_rate:0.39,
-  sparkle:1.0, num_centers:6.0,
-  ...(saved.V || {}),
-};
+const PROFILES={};
+PROFILE_KEYS.forEach(mode=>{
+  const def=PROFILE_DEFAULTS[mode], sv=saved.profiles?.[mode]||{};
+  PROFILES[mode]={
+    ...def, ...sv,
+    retro:{...def.retro, ...(sv.retro||{})},
+    cf:{...def.cf, ...(sv.cf||{})},
+  };
+});
 
 /* ── Pointer ── */
 const mouse={x:0.5,y:0.5,tx:0.5,ty:0.5};
@@ -197,24 +243,51 @@ function pointer(e){ const p=e.touches?e.touches[0]:e; mouse.tx=p.clientX/innerW
 addEventListener('mousemove',pointer);
 addEventListener('touchmove',(e)=>{pointer(e);e.preventDefault();},{passive:false});
 
-/* When embedded via holographicLayer.js, this iframe is sized/positioned to
-   Frame 1's box but isn't necessarily the topmost element there (z-order
-   tracks Frame 1, see setZIndex there) — so it won't reliably get real
-   mousemove/touchmove events of its own. The parent page forwards pointer
-   position (already normalized against this iframe's own box) instead;
-   same-origin check since NeedyGirl always serves both from one origin. */
+// externalMode/Intensity: last value actually received from EffectDirector
+// via ng-holo-mode (the real, stat-driven signal). previewMode/Intensity:
+// non-null while the panel's Mode dropdown below is forcing a mode for
+// editing — takes priority over the external signal, so dragging a slider
+// is visible immediately without needing real StatStore affection/darkness
+// at the right values. See frame() below for how these combine into the
+// actually-applied profile/intensity each draw.
+let externalMode='normal', externalIntensity=0;
+let previewMode=null, previewIntensity=1;
+
+/* This iframe is always full-viewport (so #panel below isn't cropped — see
+   the top-of-file #holo-clip comment); #holo-clip itself is positioned to
+   Frame 1's live box by the parent instead, via ng-holo-frame1-box. That
+   iframe also isn't necessarily the topmost element there (z-order tracks
+   Frame 1, see setZIndex in holographicLayer.js) — so it won't reliably get
+   real mousemove/touchmove events of its own either; the parent forwards
+   pointer position (already normalized against Frame 1's box) instead.
+   Same-origin check since NeedyGirl always serves both from one origin. */
 addEventListener('message', (e)=>{
   if(e.origin!==location.origin) return;
   const d=e.data;
   if(d && d.type==='ng-holographic-pointer'){ mouse.tx=d.tx; mouse.ty=d.ty; }
+  else if(d && d.type==='ng-holo-mode'){
+    externalMode=(d.mode && PROFILES[d.mode]) ? d.mode : 'normal';
+    externalIntensity=Math.max(0,Math.min(1,d.intensity??0));
+  }
+  else if(d && d.type==='ng-holo-frame1-box'){
+    Object.assign(holoClip.style,{
+      left:`${d.left}px`, top:`${d.top}px`, width:`${d.width}px`, height:`${d.height}px`,
+      transform: d.rotation ? `rotate(${d.rotation}rad)` : 'none',
+      visibility:'visible',
+    });
+    resize();
+  }
 });
 
-/* ── Resize ── the longest-side clamp this used to do locally now lives in
-   shared/device-perf.js's getPerfResolutionCap() itself, so every consumer
-   (Stage.js, pixelCursor, this) gets it automatically. */
+/* ── Resize ── canvas resolution now tracks #holo-clip's own box (Frame 1's
+   live size), not the full iframe viewport — the longest-side clamp this
+   used to do locally now lives in shared/device-perf.js's
+   getPerfResolutionCap() itself, so every consumer (Stage.js, pixelCursor,
+   this) gets it automatically. */
 function resize(){
   const scale=window.getPerfResolutionCap?window.getPerfResolutionCap():Math.min(window.devicePixelRatio||1,2);
-  canvas.width=Math.floor(innerWidth*scale); canvas.height=Math.floor(innerHeight*scale);
+  const w=holoClip.clientWidth||innerWidth, h=holoClip.clientHeight||innerHeight;
+  canvas.width=Math.floor(w*scale); canvas.height=Math.floor(h*scale);
   gl.viewport(0,0,canvas.width,canvas.height);
 }
 addEventListener('resize',resize); resize();
@@ -227,19 +300,32 @@ function hexToRgba(hex, a){
   const [r,g,b]=hexToVec3(hex).map(v=>Math.round(v*255));
   return `rgba(${r},${g},${b},${a})`;
 }
+function clamp01(v){ return Math.max(0,Math.min(1,v)); }
+function lerp(a,b,t){ return a+(b-a)*t; }
+function vecToHex(v){
+  const h=(x)=>Math.round(clamp01(x)*255).toString(16).padStart(2,'0');
+  return `#${h(v[0])}${h(v[1])}${h(v[2])}`;
+}
+function lerpHex(hexA,hexB,t){
+  const a=hexToVec3(hexA), b=hexToVec3(hexB);
+  return vecToHex([lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)]);
+}
 
-/* ── Slider builder ── */
-function makeSlider({id,label,min,max,step,def,key,noMax}){
+/* ── Slider builder ── bound to whichever profile is currently selected for
+   editing (previewMode, see refreshModeFields() below) rather than one
+   shared object — switching the Mode dropdown re-points every slider at a
+   different PROFILES[mode] entry and refreshes their displayed values. */
+const sliderRows=[]; // {key, sl, val, step} — replayed by refreshModeFields()
+function makeSlider({id,label,min,max,step,key,noMax}){
   const ct=document.getElementById(id);
   const top=document.createElement('div'); top.className='sg-top';
   const lbl=document.createElement('span'); lbl.className='sg-label'; lbl.textContent=label;
   const val=document.createElement('span'); val.className='sg-val';
-  val.textContent=def.toFixed(step<1?2:0);
   top.appendChild(lbl); top.appendChild(val);
 
   const tr=document.createElement('div'); tr.className='sg-track';
   const sl=document.createElement('input'); sl.type='range';
-  sl.min=min; sl.max=max; sl.step=step; sl.value=def;
+  sl.min=min; sl.max=max; sl.step=step;
   tr.appendChild(sl);
 
   if(!noMax){
@@ -254,98 +340,188 @@ function makeSlider({id,label,min,max,step,def,key,noMax}){
     });
   }
   ct.appendChild(top); ct.appendChild(tr);
-  function upd(){ const v=parseFloat(sl.value); V[key]=v; val.textContent=v.toFixed(step<1?2:0); saveState(); }
+  function upd(){
+    if(!previewMode) return;
+    const v=parseFloat(sl.value);
+    PROFILES[previewMode][key]=v;
+    val.textContent=v.toFixed(step<1?2:0);
+    saveState();
+  }
   sl.addEventListener('input',upd);
+  sliderRows.push({key,sl,val,step});
 }
 
-/* ── Build sliders ── */
-makeSlider({id:'sg-speed',label:'Flow Speed',   min:0.1,max:5,   step:0.05, def:V.speed,        key:'speed'       });
-makeSlider({id:'sg-steps',label:'Sharpness',    min:0,  max:1,   step:0.01, def:V.steps,        key:'steps'       });
-makeSlider({id:'sg-ring', label:'Ring Density', min:1,  max:30,  step:0.5,  def:V.ring_density, key:'ring_density'});
-makeSlider({id:'sg-ncen', label:'Vortex Count', min:1,  max:8,   step:1,    def:V.num_centers,  key:'num_centers', noMax:true});
-makeSlider({id:'sg-warp', label:'Warp',         min:0,  max:1,   step:0.01, def:V.warp,         key:'warp'        });
-makeSlider({id:'sg-damp', label:'Drift Range',  min:0,  max:0.5, step:0.005,def:V.drift_amp,    key:'drift_amp'   });
-makeSlider({id:'sg-dspd', label:'Drift Speed',  min:0,  max:1,   step:0.01, def:V.drift_speed,  key:'drift_speed' });
-makeSlider({id:'sg-hue',  label:'Hue Shift',    min:-1, max:1,   step:0.01, def:V.hue,          key:'hue'         });
-makeSlider({id:'sg-vig',  label:'Vignette',     min:0,  max:1,   step:0.01, def:V.vignette,     key:'vignette'    });
-makeSlider({id:'sg-ssize',label:'Sparkle Grid', min:2,  max:20,  step:0.5,  def:V.sparkle_size, key:'sparkle_size'});
-makeSlider({id:'sg-srate',label:'Sparkle Rate', min:0,  max:1,   step:0.01, def:V.sparkle_rate, key:'sparkle_rate'});
+/* ── Build sliders (structure only — values populated once a mode is
+   selected, see refreshModeFields()) ── */
+makeSlider({id:'sg-speed',label:'Flow Speed',   min:0.1,max:5,   step:0.05, key:'speed'       });
+makeSlider({id:'sg-steps',label:'Sharpness',    min:0,  max:1,   step:0.01, key:'steps'       });
+makeSlider({id:'sg-ring', label:'Ring Density', min:1,  max:30,  step:0.5,  key:'ring_density'});
+makeSlider({id:'sg-ncen', label:'Vortex Count', min:1,  max:8,   step:1,    key:'num_centers', noMax:true});
+makeSlider({id:'sg-warp', label:'Warp',         min:0,  max:1,   step:0.01, key:'warp'        });
+makeSlider({id:'sg-damp', label:'Drift Range',  min:0,  max:0.5, step:0.005,key:'drift_amp'   });
+makeSlider({id:'sg-dspd', label:'Drift Speed',  min:0,  max:1,   step:0.01, key:'drift_speed' });
+makeSlider({id:'sg-hue',  label:'Hue Shift',    min:-1, max:1,   step:0.01, key:'hue'         });
+makeSlider({id:'sg-vig',  label:'Vignette',     min:0,  max:1,   step:0.01, key:'vignette'    });
+makeSlider({id:'sg-ssize',label:'Sparkle Grid', min:2,  max:20,  step:0.5,  key:'sparkle_size'});
+makeSlider({id:'sg-srate',label:'Sparkle Rate', min:0,  max:1,   step:0.01, key:'sparkle_rate'});
 
 /* ── Vortex colour picker ── */
-let vortexHex=saved.vortexHex || '#D1CCDE';
-{
-  const el=document.getElementById('vortex-color');
-  el.value=vortexHex;
-  el.addEventListener('input', e=>{ vortexHex=e.target.value; saveState(); });
-}
-
-/* ── Retro scan-line overlay ── */
-const retroEl  = document.getElementById('retro');
-const retroBtn = document.getElementById('retro-btn');
-let retroHex=saved.retro?.hex ?? '#ffffff', retroOpa=saved.retro?.opa ?? 0.11;
-
-function applyRetro(){
-  const t=hexToRgba(retroHex,0), s=hexToRgba(retroHex,retroOpa);
-  retroEl.style.backgroundImage=`repeating-linear-gradient(0deg,${t} 0px,${t} 2px,${s} 2px,${s} 3px)`;
-  document.getElementById('retro-pct').textContent=Math.round(retroOpa*100)+'%';
-}
-document.getElementById('retro-color').value=retroHex;
-document.getElementById('retro-opa').value=retroOpa;
-document.getElementById('retro-color').addEventListener('input',e=>{ retroHex=e.target.value; applyRetro(); saveState(); });
-document.getElementById('retro-opa').addEventListener('input',e=>{ retroOpa=parseFloat(e.target.value); applyRetro(); saveState(); });
-document.getElementById('retro-opa-max').addEventListener('change',e=>{
-  const nm=parseFloat(e.target.value), sl=document.getElementById('retro-opa');
-  if(!isNaN(nm)&&nm>0){sl.max=nm; if(retroOpa>nm){retroOpa=nm;sl.value=nm;applyRetro();saveState();}}
-  else e.target.value=sl.max;
+const vortexColorInp=document.getElementById('vortex-color');
+vortexColorInp.addEventListener('input', e=>{
+  if(!previewMode) return;
+  PROFILES[previewMode].vortexHex=e.target.value;
+  saveState();
 });
-if(saved.retro?.off) retroEl.classList.add('off');
-retroBtn.classList.toggle('on',!retroEl.classList.contains('off'));
-retroBtn.onclick=()=>{ retroEl.classList.toggle('off'); retroBtn.classList.toggle('on',!retroEl.classList.contains('off')); saveState(); };
-applyRetro();
 
-/* ── Colour filter overlay ── */
-const cfEl  = document.getElementById('cf');
-const cfBtn = document.getElementById('cf-btn');
-let cfHex=saved.cf?.hex ?? '#ffb8ce', cfOpa=saved.cf?.opa ?? 0.15;
-
-function applyCf(){
-  cfEl.style.background=hexToRgba(cfHex,cfOpa);
-  document.getElementById('cf-pct').textContent=Math.round(cfOpa*100)+'%';
-}
-document.getElementById('cf-color').value=cfHex;
-document.getElementById('cf-opa').value=cfOpa;
-document.getElementById('cf-color').addEventListener('input',e=>{ cfHex=e.target.value; applyCf(); saveState(); });
-document.getElementById('cf-opa').addEventListener('input',e=>{ cfOpa=parseFloat(e.target.value); applyCf(); saveState(); });
-document.getElementById('cf-opa-max').addEventListener('change',e=>{
-  const nm=parseFloat(e.target.value), sl=document.getElementById('cf-opa');
-  if(!isNaN(nm)&&nm>0){sl.max=nm; if(cfOpa>nm){cfOpa=nm;sl.value=nm;applyCf();saveState();}}
-  else e.target.value=sl.max;
+/* ── Retro scan-line overlay ── rendered opacity/colour is computed fresh
+   every frame in frame() below (blended by the ACTIVE mode, which can
+   differ from whichever mode this panel is currently EDITING) — these
+   handlers only write into the profile being edited and refresh this
+   panel's own display; they never touch retroEl's CSS directly. */
+const retroEl=document.getElementById('retro');
+const retroBtn=document.getElementById('retro-btn');
+const retroColorInp=document.getElementById('retro-color');
+const retroOpaInp=document.getElementById('retro-opa');
+const retroOpaMaxInp=document.getElementById('retro-opa-max');
+const retroPctEl=document.getElementById('retro-pct');
+retroColorInp.addEventListener('input',e=>{
+  if(!previewMode) return;
+  PROFILES[previewMode].retro.hex=e.target.value; saveState();
 });
-if(saved.cf?.off) cfEl.classList.add('off');
-cfBtn.classList.toggle('on',!cfEl.classList.contains('off'));
-cfBtn.onclick=()=>{ cfEl.classList.toggle('off'); cfBtn.classList.toggle('on',!cfEl.classList.contains('off')); saveState(); };
-applyCf();
+retroOpaInp.addEventListener('input',e=>{
+  if(!previewMode) return;
+  PROFILES[previewMode].retro.opa=parseFloat(e.target.value);
+  retroPctEl.textContent=Math.round(PROFILES[previewMode].retro.opa*100)+'%';
+  saveState();
+});
+retroOpaMaxInp.addEventListener('change',e=>{
+  if(!previewMode) return;
+  const nm=parseFloat(e.target.value);
+  if(!isNaN(nm)&&nm>0){
+    retroOpaInp.max=nm;
+    if(PROFILES[previewMode].retro.opa>nm){ PROFILES[previewMode].retro.opa=nm; retroOpaInp.value=nm; saveState(); }
+  } else e.target.value=retroOpaInp.max;
+});
+retroBtn.onclick=()=>{
+  if(!previewMode) return;
+  const p=PROFILES[previewMode];
+  p.retro.off=!p.retro.off;
+  retroBtn.classList.toggle('on',!p.retro.off);
+  saveState();
+};
+
+/* ── Colour filter overlay ── same "editing vs. actively-rendering mode can
+   differ" separation as the scanline overlay above. */
+const cfEl=document.getElementById('cf');
+const cfBtn=document.getElementById('cf-btn');
+const cfColorInp=document.getElementById('cf-color');
+const cfOpaInp=document.getElementById('cf-opa');
+const cfOpaMaxInp=document.getElementById('cf-opa-max');
+const cfPctEl=document.getElementById('cf-pct');
+cfColorInp.addEventListener('input',e=>{
+  if(!previewMode) return;
+  PROFILES[previewMode].cf.hex=e.target.value; saveState();
+});
+cfOpaInp.addEventListener('input',e=>{
+  if(!previewMode) return;
+  PROFILES[previewMode].cf.opa=parseFloat(e.target.value);
+  cfPctEl.textContent=Math.round(PROFILES[previewMode].cf.opa*100)+'%';
+  saveState();
+});
+cfOpaMaxInp.addEventListener('change',e=>{
+  if(!previewMode) return;
+  const nm=parseFloat(e.target.value);
+  if(!isNaN(nm)&&nm>0){
+    cfOpaInp.max=nm;
+    if(PROFILES[previewMode].cf.opa>nm){ PROFILES[previewMode].cf.opa=nm; cfOpaInp.value=nm; saveState(); }
+  } else e.target.value=cfOpaInp.max;
+});
+cfBtn.onclick=()=>{
+  if(!previewMode) return;
+  const p=PROFILES[previewMode];
+  p.cf.off=!p.cf.off;
+  cfBtn.classList.toggle('on',!p.cf.off);
+  saveState();
+};
 
 /* ── Sparkle toggle ── */
 const sparkleBtn=document.getElementById('sparkle-btn');
-sparkleBtn.classList.toggle('on',V.sparkle>0.5);
-sparkleBtn.onclick=()=>{ V.sparkle=V.sparkle>0.5?0.0:1.0; sparkleBtn.classList.toggle('on',V.sparkle>0.5); saveState(); };
+sparkleBtn.onclick=()=>{
+  if(!previewMode) return;
+  const p=PROFILES[previewMode];
+  p.sparkle=p.sparkle>0.5?0.0:1.0;
+  sparkleBtn.classList.toggle('on',p.sparkle>0.5);
+  saveState();
+};
 
-/* ── Save ── */
+/* ── Mode dropdown + Preview Intensity + refresh-all-fields ── selecting a
+   mode both forces it active for live preview (previewMode/Intensity, see
+   frame() below) AND re-points every slider above (Motion/Shape/Color/
+   Sparkle/Overlays/vortex colour) at that mode's own PROFILES entry.
+   'Auto' hides the whole editable section: there's no single fixed profile
+   to show sliders for while StatStore is driving a continuous blend
+   between two of them. */
+const mpSelect=document.getElementById('mp-select');
+const mpIntensityEl=document.getElementById('sg-mp-intensity');
+const modeFieldsEl=document.getElementById('mode-fields');
+
+{
+  const top=document.createElement('div'); top.className='sg-top';
+  const lbl=document.createElement('span'); lbl.className='sg-label'; lbl.textContent='Preview Intensity';
+  const val=document.createElement('span'); val.className='sg-val'; val.textContent=previewIntensity.toFixed(2);
+  top.appendChild(lbl); top.appendChild(val);
+  const tr=document.createElement('div'); tr.className='sg-track';
+  const sl=document.createElement('input'); sl.type='range'; sl.min=0; sl.max=1; sl.step=0.01; sl.value=previewIntensity;
+  tr.appendChild(sl);
+  mpIntensityEl.appendChild(top); mpIntensityEl.appendChild(tr);
+  sl.addEventListener('input',()=>{ previewIntensity=parseFloat(sl.value); val.textContent=previewIntensity.toFixed(2); });
+}
+
+function refreshModeFields(){
+  const hidden=!previewMode;
+  mpIntensityEl.classList.toggle('mp-hidden',hidden);
+  modeFieldsEl.classList.toggle('mp-hidden',hidden);
+  if(hidden) return;
+  const p=PROFILES[previewMode];
+  sliderRows.forEach(({key,sl,val,step})=>{
+    const v=p[key];
+    sl.value=v; val.textContent=v.toFixed(step<1?2:0);
+  });
+  vortexColorInp.value=p.vortexHex;
+  retroColorInp.value=p.retro.hex; retroOpaInp.value=p.retro.opa;
+  retroBtn.classList.toggle('on',!p.retro.off);
+  retroPctEl.textContent=Math.round(p.retro.opa*100)+'%';
+  cfColorInp.value=p.cf.hex; cfOpaInp.value=p.cf.opa;
+  cfBtn.classList.toggle('on',!p.cf.off);
+  cfPctEl.textContent=Math.round(p.cf.opa*100)+'%';
+  sparkleBtn.classList.toggle('on',p.sparkle>0.5);
+}
+mpSelect.addEventListener('change',()=>{ previewMode=mpSelect.value||null; refreshModeFields(); });
+refreshModeFields();
+
+/* ── Save (download PNG) ── */
 document.getElementById('save-btn').onclick=()=>{
   const a=document.createElement('a'); a.download='holographic-radiating.png';
   a.href=canvas.toDataURL('image/png'); a.click();
 };
 
-/* ── Reset (clear this effect's saved settings and reload its defaults) ── */
+/* ── Reset (clear ALL saved profiles and reload coded defaults) ── */
 document.getElementById('reset-btn').onclick=()=>{
   NeedyGirlState.remove(STORAGE_KEY);
   location.reload();
 };
 
-/* ── Panel toggle ── */
+/* ── Panel toggle ── this iframe is click-through by default when embedded
+   (see holographicLayer.js) — the internal panel-toggle button below only
+   works when this effect is viewed standalone; embedded, the parent's own
+   🔮 proxy button flips pointer-events on and messages ng-holo-toggle here
+   instead (mirrors UI/retroFilter/script.js's ng-retrofilter-toggle). */
 const panel=document.getElementById('panel');
 document.getElementById('panel-toggle').onclick=()=>panel.classList.toggle('closed');
+addEventListener('message',(e)=>{
+  if(e.origin!==location.origin) return;
+  if(e.data?.type==='ng-holo-toggle') panel.classList.toggle('closed');
+});
 
 /* ── Hint auto-hide ── */
 const hint=document.getElementById('hint'); let idleT;
@@ -371,24 +547,65 @@ function frame(now){
   // now, so this keeps the mouse-follow's real-world (seconds) catch-up speed
   // roughly the same instead of feeling laggier at the lower update rate.
   mouse.x+=(mouse.tx-mouse.x)*0.09; mouse.y+=(mouse.ty-mouse.y)*0.09;
-  const [pr,pg,pb]=hexToVec3(vortexHex);
+
+  // Blend the active mode's FULL profile against 'normal' by intensity —
+  // every field differs independently per mode now, so this lerps the
+  // whole profile rather than adding small deltas on top of one shared
+  // base (the earlier HOLO_MODE_PRESET design). previewMode (forced by the
+  // panel's Mode dropdown) takes priority over EffectDirector's real signal
+  // so editing is visible immediately.
+  const activeMode=previewMode||externalMode;
+  const activeIntensity=activeMode==='normal'?0:(previewMode?previewIntensity:externalIntensity);
+  const base=PROFILES.normal, mode=PROFILES[activeMode]||base;
+  const t=activeIntensity;
+
+  const effSpeed=lerp(base.speed,mode.speed,t);
+  const effSteps=lerp(base.steps,mode.steps,t);
+  const effRing=lerp(base.ring_density,mode.ring_density,t);
+  const effWarp=lerp(base.warp,mode.warp,t);
+  const effDriftAmp=lerp(base.drift_amp,mode.drift_amp,t);
+  const effDriftSpeed=lerp(base.drift_speed,mode.drift_speed,t);
+  const effHue=lerp(base.hue,mode.hue,t);
+  const effVignette=lerp(base.vignette,mode.vignette,t);
+  const effSparkleSize=lerp(base.sparkle_size,mode.sparkle_size,t);
+  const effSparkleRate=lerp(base.sparkle_rate,mode.sparkle_rate,t);
+  const effSparkle=lerp(base.sparkle,mode.sparkle,t); // both are 0/1 -- lerp naturally snaps at t=0.5 since the shader just checks >0.5
+  const effNumCenters=lerp(base.num_centers,mode.num_centers,t);
+  const [br,bg,bb]=hexToVec3(base.vortexHex), [mr,mg,mb]=hexToVec3(mode.vortexHex);
+  const effPr=lerp(br,mr,t), effPg=lerp(bg,mg,t), effPb=lerp(bb,mb,t);
+
   gl.uniform2f(U.res,canvas.width,canvas.height);
   gl.uniform1f(U.time,(now-start)/1000);
   gl.uniform2f(U.mouse,mouse.x,mouse.y);
-  gl.uniform1f(U.speed,V.speed);
-  gl.uniform1f(U.steps,V.steps);
-  gl.uniform1f(U.sparkle,V.sparkle);
-  gl.uniform1f(U.ring_density,V.ring_density);
-  gl.uniform1f(U.warp_strength,V.warp);
-  gl.uniform1f(U.hue_shift,V.hue);
-  gl.uniform1f(U.drift_amp,V.drift_amp);
-  gl.uniform1f(U.drift_speed,V.drift_speed);
-  gl.uniform1f(U.sparkle_size,V.sparkle_size);
-  gl.uniform1f(U.sparkle_rate,V.sparkle_rate);
-  gl.uniform1f(U.vignette,V.vignette);
-  gl.uniform1f(U.num_centers,V.num_centers);
-  gl.uniform3f(U.pal_a,pr,pg,pb);
+  gl.uniform1f(U.speed,effSpeed);
+  gl.uniform1f(U.steps,effSteps);
+  gl.uniform1f(U.sparkle,effSparkle);
+  gl.uniform1f(U.ring_density,effRing);
+  gl.uniform1f(U.warp_strength,effWarp);
+  gl.uniform1f(U.hue_shift,effHue);
+  gl.uniform1f(U.drift_amp,effDriftAmp);
+  gl.uniform1f(U.drift_speed,effDriftSpeed);
+  gl.uniform1f(U.sparkle_size,effSparkleSize);
+  gl.uniform1f(U.sparkle_rate,effSparkleRate);
+  gl.uniform1f(U.vignette,effVignette);
+  gl.uniform1f(U.num_centers,effNumCenters);
+  gl.uniform3f(U.pal_a,effPr,effPg,effPb);
   gl.drawArrays(gl.TRIANGLES,0,3);
+
+  // Baked overlays (retro scanline / colour filter) are plain DOM/CSS, not
+  // shader uniforms, but blend the same way — recomputed every frame here
+  // (cheap: two CSS string writes) rather than only on slider input, so
+  // they track the same continuous stat-driven intensity the shader does,
+  // even though the panel might currently be EDITING a different mode's
+  // values than the one actually rendering.
+  const retroOpaEff=lerp(base.retro.off?0:base.retro.opa, mode.retro.off?0:mode.retro.opa, t);
+  const retroHexEff=lerpHex(base.retro.hex, mode.retro.hex, t);
+  const rt=hexToRgba(retroHexEff,0), rs=hexToRgba(retroHexEff,retroOpaEff);
+  retroEl.style.backgroundImage=`repeating-linear-gradient(0deg,${rt} 0px,${rt} 2px,${rs} 2px,${rs} 3px)`;
+
+  const cfOpaEff=lerp(base.cf.off?0:base.cf.opa, mode.cf.off?0:mode.cf.opa, t);
+  const cfHexEff=lerpHex(base.cf.hex, mode.cf.hex, t);
+  cfEl.style.background=hexToRgba(cfHexEff,cfOpaEff);
 }
 rafId=requestAnimationFrame(frame);
 

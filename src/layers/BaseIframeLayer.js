@@ -1,3 +1,5 @@
+import { StatStore } from '../core/StatStore.js';
+
 // Wraps a fully self-contained effect folder (its own HTML/CSS/JS and, in
 // effects/holographic's case, its own internal control panel) in an
 // <iframe> — a totally separate browsing context, per the "isolate the
@@ -27,7 +29,7 @@ export class BaseIframeLayer {
     // Sent on 'load' too in case pause()/resume() lands before the iframe
     // has finished its own boot and wired up the listener.
     this._paused = false;
-    this.el.addEventListener('load', () => { this._postPauseState(); this._postTierState(); });
+    this.el.addEventListener('load', () => { this._postPauseState(); this._postTierState(); this._postStatState(); });
 
     // shared/perf-monitor.js (loaded by the root index.html only — same-origin
     // iframes don't share window scope, so this can't just be read directly
@@ -39,6 +41,13 @@ export class BaseIframeLayer {
     this._offTierChange = window.onPerfTierChange
       ? window.onPerfTierChange((t) => { this._tier = t; this._postTierState(); })
       : null;
+
+    // affection/stress/darkness/followers, broadcast the same way — effects
+    // opt in by listening for {type:'ng-stat', stats}. StatStore.on() calls
+    // back immediately with the current snapshot, so this._stats is already
+    // populated before the first postMessage (sent on 'load' above).
+    this._stats = StatStore.getSnapshot();
+    this._offStatChange = StatStore.on('change', (s) => { this._stats = s; this._postStatState(); });
 
     this.onChange = null; // wired by LayerManager.add()
   }
@@ -74,6 +83,10 @@ export class BaseIframeLayer {
     this.el.contentWindow?.postMessage({ type: 'ng-perf-tier', tier: this._tier }, window.location.origin);
   }
 
+  _postStatState() {
+    this.el.contentWindow?.postMessage({ type: 'ng-stat', stats: this._stats }, window.location.origin);
+  }
+
   // Always stays behind every Pixi/Lottie layer — it's the background,
   // not a slot in the interleaved z-stack (see main.js for why Pixi/Lottie
   // can't fully interleave with a separate DOM context either).
@@ -83,6 +96,7 @@ export class BaseIframeLayer {
 
   destroy() {
     this._offTierChange?.();
+    this._offStatChange?.();
     this.el.remove();
   }
 }

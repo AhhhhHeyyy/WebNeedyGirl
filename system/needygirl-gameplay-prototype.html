@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeedyGirl — 玩法互動層 視覺化原型</title>
+<style>
+  :root{
+    --pink:#ffd8ea; --lav:#e8deff; --sky:#d4e8ff;
+    --grad:linear-gradient(168deg,#ffd8ea 0%,#e8deff 52%,#d4e8ff 100%);
+    --handle:linear-gradient(90deg,#f4b8d8,#c8b8f2,#b8d8f4);
+    --ink:#7862a8; --ink2:#7060a0;
+    --aff:#ff8fc4; --str:#ffb45e; --dark:#9d6bff; --fol:#5ec8ff;
+    --card:rgba(255,255,255,.42);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;font-family:"PingFang TC","Microsoft JhengHei",system-ui,sans-serif;color:var(--ink)}
+  body{
+    background:
+      repeating-linear-gradient(45deg,rgba(255,255,255,.35) 0 14px,rgba(230,220,255,.35) 14px 28px),
+      var(--grad);
+    background-attachment:fixed;
+    display:grid;grid-template-columns:1fr 340px;grid-template-rows:auto 1fr;
+    gap:14px;padding:14px;min-height:100vh;
+    transition:filter .5s;
+  }
+  h1{grid-column:1/3;margin:0;font-size:19px;letter-spacing:1px;
+     font-family:"Courier New",monospace;text-shadow:0 1px 0 #fff}
+  h1 small{font-weight:400;opacity:.7;font-size:12px}
+  .glass{background:var(--card);backdrop-filter:blur(24px) saturate(175%);
+    -webkit-backdrop-filter:blur(24px) saturate(175%);
+    border:1px solid rgba(255,255,255,.6);border-radius:18px;
+    box-shadow:0 8px 30px rgba(150,120,200,.18)}
+
+  /* ---------- STAGE ---------- */
+  #stage{position:relative;overflow:hidden;padding:0;display:flex;
+    flex-direction:column;min-height:520px}
+  #scene{flex:1;position:relative;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 40%,#fff6fb, #ffe4f3 40%, #e9d9ff 75%, #cfe6ff);
+    transition:filter .6s, background .6s;overflow:hidden}
+  #liveTag{position:absolute;top:10px;left:12px;font:700 12px "Courier New";color:#ff5c9d;
+    background:#fff;padding:2px 8px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.1);z-index:6}
+  #liveTag::before{content:"● ";color:#ff2e7e}
+
+  /* character */
+  #kangel{width:210px;height:260px;position:relative;filter:drop-shadow(0 10px 20px rgba(160,120,220,.35));
+    transition:transform .4s}
+  .hair{position:absolute;width:64px;height:150px;top:44px;border-radius:40px;
+    background:linear-gradient(180deg,#ffb3d9,#7fd4ff)}
+  .hair.l{left:-4px;transform:rotate(16deg)}
+  .hair.r{right:-4px;transform:rotate(-16deg)}
+  #head{position:absolute;left:50%;top:26px;transform:translateX(-50%);
+    width:118px;height:118px;border-radius:50%;
+    background:radial-gradient(circle at 40% 35%,#fff,#ffe3f1);
+    display:flex;align-items:center;justify-content:center;font-size:60px;
+    border:3px solid #fff;z-index:3;transition:.4s}
+  #body{position:absolute;left:50%;bottom:0;transform:translateX(-50%);
+    width:150px;height:130px;border-radius:70px 70px 30px 30px;
+    background:linear-gradient(180deg,#bfe6ff,#d9c4ff);border:3px solid #fff}
+  #bow{position:absolute;left:50%;bottom:118px;transform:translateX(-50%);
+    font-size:26px;z-index:4}
+  #faceExpr{}
+
+  /* chat side of stage */
+  #chatwrap{height:150px;display:flex;flex-direction:column;border-top:2px dashed rgba(255,255,255,.8)}
+  #chatlog{flex:1;overflow-y:auto;padding:8px 12px;font-size:12.5px;line-height:1.5}
+  #chatlog .c{margin:2px 0}
+  #chatlog .sys{color:#b48adf}
+  #chatlog .ka{color:#e0559b;font-weight:600}
+  #chatlog .sc{background:#fff2c9;border-left:3px solid #ffbf3a;padding:2px 6px;border-radius:4px}
+  #chatlog .scred{background:#ffd3df;border-left:3px solid #ff2e7e;padding:2px 6px;border-radius:4px;font-weight:600}
+  #chatlog .hate{color:#c0392b}
+
+  /* superchat input */
+  #scbar{display:flex;gap:6px;padding:8px;align-items:center;flex-wrap:wrap}
+  #scbar input{flex:1;min-width:120px;border:none;border-radius:20px;padding:8px 12px;
+    background:rgba(255,255,255,.75);color:var(--ink);font-size:13px;outline:none}
+  .amt{border:none;border-radius:14px;padding:6px 9px;font:700 11px "Courier New";cursor:pointer;
+    background:var(--handle);color:#5a4a86;box-shadow:0 2px 5px rgba(150,120,200,.25)}
+  .amt.red{background:linear-gradient(90deg,#ff86b3,#ff5c9d);color:#fff}
+  .amt.sel{outline:2px solid #fff;transform:translateY(-1px)}
+  #send{border:none;border-radius:50%;width:34px;height:34px;cursor:pointer;font-size:15px;
+    background:#fff;color:#ff5c9d;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+
+  /* ---------- RIGHT PANEL ---------- */
+  #side{display:flex;flex-direction:column;gap:14px;overflow:hidden}
+  .panel{padding:14px}
+  .panel h2{margin:0 0 10px;font:700 13px "Courier New";letter-spacing:1px;
+    display:flex;align-items:center;gap:6px}
+  .stat{margin:9px 0}
+  .stat .row{display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px}
+  .bar{height:12px;border-radius:8px;background:rgba(255,255,255,.55);overflow:hidden}
+  .bar>i{display:block;height:100%;width:50%;border-radius:8px;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+  .b-aff>i{background:linear-gradient(90deg,#ffc0dd,var(--aff))}
+  .b-str>i{background:linear-gradient(90deg,#ffe0b0,var(--str))}
+  .b-dark>i{background:linear-gradient(90deg,#c9adff,var(--dark))}
+  .b-fol>i{background:linear-gradient(90deg,#b6e6ff,var(--fol))}
+
+  /* stickers */
+  #stickers{display:flex;gap:8px;justify-content:space-around;padding:12px 8px}
+  .stk{width:52px;height:52px;border:none;border-radius:16px;cursor:pointer;font-size:26px;
+    background:rgba(255,255,255,.6);box-shadow:0 3px 8px rgba(150,120,200,.2);
+    transition:transform .12s;display:flex;align-items:center;justify-content:center}
+  .stk:hover{transform:translateY(-4px) rotate(var(--r,0deg))}
+  .stk:active{transform:scale(.86)}
+  .stklabel{font-size:9px;text-align:center;opacity:.65;margin-top:2px}
+  .stkcol{display:flex;flex-direction:column;align-items:center}
+
+  .mini{font-size:11px;line-height:1.5;opacity:.85}
+  details{font-size:11.5px}
+  details summary{cursor:pointer;font-weight:700;color:var(--ink2);margin:4px 0}
+  table{width:100%;border-collapse:collapse;font-size:10.5px;margin:4px 0}
+  td,th{border:1px solid rgba(255,255,255,.7);padding:2px 4px;text-align:left}
+  th{background:rgba(255,255,255,.4)}
+
+  /* falling clones */
+  .clone{position:absolute;font-size:40px;pointer-events:none;z-index:7;will-change:transform}
+
+  /* ---------- DIALOGUE ---------- */
+  #dialog{position:absolute;left:50%;bottom:16px;transform:translateX(-50%) translateY(20px);
+    width:82%;max-width:520px;padding:14px 16px;z-index:9;opacity:0;pointer-events:none;
+    transition:.35s cubic-bezier(.2,.8,.2,1)}
+  #dialog.show{opacity:1;transform:translateX(-50%) translateY(0);pointer-events:auto}
+  #dialog .say{font-size:13.5px;margin-bottom:10px;color:#8a5fb0}
+  #dialog .say b{color:#e0559b}
+  #dialog .opts{display:flex;gap:8px;flex-wrap:wrap}
+  .opt{border:none;border-radius:16px;padding:7px 12px;cursor:pointer;font-size:12px;
+    background:var(--handle);color:#5a4a86;box-shadow:0 2px 6px rgba(150,120,200,.25)}
+  .opt:hover{filter:brightness(1.05);transform:translateY(-1px)}
+
+  /* ---------- EXTREME STATES ---------- */
+  #fx{position:fixed;inset:0;pointer-events:none;z-index:50}
+  /* scanline retro filter */
+  #fx::after{content:"";position:absolute;inset:0;opacity:.14;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.5) 0 1px,transparent 1px 3px)}
+  /* darkness */
+  body.dark{filter:hue-rotate(-25deg) saturate(1.2) contrast(1.08)}
+  body.dark #scene{background:radial-gradient(circle at 50% 40%,#3a2350,#241436 60%,#120a1f)}
+  body.dark #head{filter:brightness(.8)}
+  body.dark #liveTag{background:#2a0f2a;color:#ff2e7e}
+  body.darkmax{animation:corrupt .18s infinite steps(2)}
+  @keyframes corrupt{0%{filter:hue-rotate(-40deg) saturate(1.5) contrast(1.2)}
+    50%{filter:hue-rotate(-80deg) invert(.04) contrast(1.3)}100%{filter:hue-rotate(-30deg)}}
+  body.darkmax #fx{background:repeating-linear-gradient(96deg,rgba(157,107,255,.05) 0 6px,transparent 6px 20px)}
+  /* stress shake */
+  body.shake #stage{animation:sh .12s infinite}
+  @keyframes sh{0%{transform:translate(0)}25%{transform:translate(-3px,1px)}
+    75%{transform:translate(3px,-1px)}100%{transform:translate(0)}}
+  /* cucked */
+  body.cucked #scene{filter:grayscale(.85) brightness(.9)}
+  /* affection bloom / overload handled by JS spawns */
+  #overload{position:fixed;inset:0;z-index:60;pointer-events:none;opacity:0;
+    background:radial-gradient(circle,rgba(255,140,200,.0),rgba(255,140,200,.35));
+    transition:opacity .4s;mix-blend-mode:screen}
+  body.overload #overload{opacity:1;animation:pulse .5s infinite alternate}
+  @keyframes pulse{to{opacity:.65;filter:hue-rotate(60deg)}}
+
+  #toast{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:80;
+    padding:8px 16px;border-radius:20px;font:700 12px "Courier New";color:#fff;
+    background:linear-gradient(90deg,#ff86b3,#9d6bff);opacity:0;transition:.3s;pointer-events:none;
+    box-shadow:0 4px 14px rgba(150,80,200,.4)}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(4px)}
+
+  @media(max-width:820px){body{grid-template-columns:1fr}h1{grid-column:1}#side{order:2}}
+</style>
+</head>
+<body>
+  <div id="fx"></div>
+  <div id="overload"></div>
+  <div id="toast"></div>
+
+  <h1>♡ NeedyGirl — 玩法互動層 視覺化原型 &nbsp;<small>屬性 × 貼圖 × Superchat × 極值特效（可實際操作）</small></h1>
+
+  <!-- STAGE -->
+  <section id="stage" class="glass">
+    <div id="scene">
+      <div id="liveTag">Live</div>
+      <div id="kangel">
+        <div class="hair l"></div><div class="hair r"></div>
+        <div id="body"></div>
+        <div id="bow">🎀</div>
+        <div id="head"><span id="faceExpr">😇</span></div>
+      </div>
+      <div id="dialog" class="glass">
+        <div class="say"></div>
+        <div class="opts"></div>
+      </div>
+    </div>
+    <div id="chatwrap" class="glass" style="border-radius:0">
+      <div id="chatlog"></div>
+      <div id="scbar">
+        <button class="amt sel" data-amt="100">¥100</button>
+        <button class="amt" data-amt="1000">¥1,000</button>
+        <button class="amt" data-amt="10000">¥10,000</button>
+        <button class="amt red" data-amt="50000">¥50,000</button>
+        <input id="scinput" placeholder="輸入 superchat…（試試 cute / 加油 / P-chan / OD / raincandy）">
+        <button id="send">➤</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- SIDE -->
+  <aside id="side">
+    <div class="panel glass">
+      <h2>🖥 Task Manager</h2>
+      <div class="stat"><div class="row"><span>♡ 好感度 Affection</span><span id="v-affection">50</span></div><div class="bar b-aff"><i id="bar-affection"></i></div></div>
+      <div class="stat"><div class="row"><span>⚡ 壓力 Stress</span><span id="v-stress">20</span></div><div class="bar b-str"><i id="bar-stress"></i></div></div>
+      <div class="stat"><div class="row"><span>🌑 陰暗度 Darkness</span><span id="v-darkness">10</span></div><div class="bar b-dark"><i id="bar-darkness"></i></div></div>
+      <div class="stat"><div class="row"><span>👥 粉絲 Followers</span><span id="v-followers">1,200</span></div><div class="bar b-fol"><i id="bar-followers"></i></div></div>
+      <div class="mini" id="statehint" style="margin-top:8px"></div>
+    </div>
+
+    <div class="panel glass">
+      <h2>🩹 貼圖互動（點擊 → 屬性）</h2>
+      <div id="stickers">
+        <div class="stkcol"><button class="stk" style="--r:-8deg" data-s="heart">❤️</button><div class="stklabel">愛心</div></div>
+        <div class="stkcol"><button class="stk" style="--r:6deg" data-s="pills">💊</button><div class="stklabel">精神藥物</div></div>
+        <div class="stkcol"><button class="stk" style="--r:-5deg" data-s="candy">🍬</button><div class="stklabel">毒品糖果</div></div>
+        <div class="stkcol"><button class="stk" style="--r:7deg" data-s="pchan">🐱</button><div class="stklabel">P君</div></div>
+        <div class="stkcol"><button class="stk" style="--r:-6deg" data-s="phone">📱</button><div class="stklabel">手機</div></div>
+      </div>
+      <div class="mini">連送 💊+🍬 觸發 OD ／ 狂送同一張效果遞減</div>
+    </div>
+
+    <div class="panel glass" style="overflow:auto">
+      <h2>📖 設計對照</h2>
+      <details open><summary>極值 → 重用既有圖層</summary>
+        <table>
+          <tr><th>條件</th><th>演出</th></tr>
+          <tr><td>darkness≥80</td><td>Spine→dark skin、checkerboard 故障、retroFilter、eye 加密</td></tr>
+          <tr><td>affection=100</td><td>愛心 bloom（Ground Control）</td></tr>
+          <tr><td>affection=0</td><td>去飽和 Cucked</td></tr>
+          <tr><td>stress≥120</td><td>強制 Darkness 直播、畫面震動</td></tr>
+          <tr><td>followers=1,000,000</td><td>全效果 overload（Internet Overdose）</td></tr>
+        </table>
+      </details>
+      <details><summary>Superchat 關鍵字</summary>
+        <table>
+          <tr><th>輸入</th><th>效果</th></tr>
+          <tr><td>甜言蜜語 cute/加油/天使</td><td>+affection</td></tr>
+          <tr><td>酸民字眼 hate/滾/醜</td><td>+stress +darkness（不可刪）</td></tr>
+          <tr><td>P-chan/中之人/本名</td><td>破第四面牆 glitch</td></tr>
+          <tr><td>OD/overdose/光/死</td><td>陰暗模式</td></tr>
+          <tr><td>raincandy</td><td>私密帳彩蛋</td></tr>
+        </table>
+      </details>
+    </div>
+  </aside>
+
+<script>
+/* ---------------- StatStore ---------------- */
+const Stat = {
+  s:{affection:50, stress:20, darkness:10, followers:1200},
+  min:{affection:0,stress:0,darkness:0,followers:0},
+  max:{affection:100,stress:120,darkness:100,followers:9999999},
+  apply(d){ for(const k in d){ this.s[k]=Math.max(this.min[k],Math.min(this.max[k],this.s[k]+d[k])); } render(); checkExtremes(); },
+  get(k){return this.s[k];}
+};
+
+function render(){
+  const cap={affection:100,stress:120,darkness:100,followers:1000000};
+  for(const k in Stat.s){
+    const v=Stat.s[k];
+    document.getElementById('v-'+k).textContent = k==='followers'? v.toLocaleString(): Math.round(v);
+    document.getElementById('bar-'+k).style.width = Math.min(100, v/cap[k]*100)+'%';
+  }
+  // expression by dominant state
+  const {affection:a,stress:st,darkness:d}=Stat.s;
+  let f='😇';
+  if(d>=80) f='😵‍💫'; else if(st>=90) f='😱'; else if(a>=90) f='🥰';
+  else if(st>=60) f='😣'; else if(d>=50) f='🫥'; else if(a<=15) f='🥀';
+  document.getElementById('faceExpr').textContent=f;
+  const hint=[];
+  if(d>=80)hint.push('陰暗模式 ON'); if(st>=120)hint.push('壓力爆表→崩潰');
+  if(a>=100)hint.push('好感 MAX'); if(a<=0)hint.push('Cucked');
+  if(Stat.s.followers>=1000000)hint.push('★ Internet Overdose');
+  document.getElementById('statehint').textContent=hint.join(' ・ ');
+}
+
+/* ---------------- extreme states ---------------- */
+function checkExtremes(){
+  const b=document.body, {affection:a,stress:st,darkness:d,followers:f}=Stat.s;
+  b.classList.toggle('dark', d>=80);
+  b.classList.toggle('darkmax', d>=100);
+  b.classList.toggle('shake', st>=120);
+  b.classList.toggle('cucked', a<=0);
+  b.classList.toggle('overload', f>=1000000);
+  if(a>=100 && !window._bloom){ window._bloom=setInterval(()=>spawnClone('❤️',true),120);
+    toast('♡ Ground Control to Psychoelectric Angel ♡'); }
+  if(a<100 && window._bloom){ clearInterval(window._bloom); window._bloom=null; }
+}
+
+/* ---------------- chat ---------------- */
+function log(html,cls=''){ const l=document.getElementById('chatlog');
+  const p=document.createElement('div'); p.className='c '+cls; p.innerHTML=html;
+  l.appendChild(p); l.scrollTop=l.scrollHeight; }
+function ka(t){ log('<span class="ka">天使醬:</span> '+t,'ka'); }
+
+/* ---------------- stickers ---------------- */
+/* 台詞皆為 A/B 級可考證原句中譯，來源見 kangel-quotes-sourced.md */
+const stkData={
+  // KAngel 人設的示愛句（A 級）
+  heart:{d:{affection:6}, say:['就是你！對，就是你！那個一直支持我的人！我愛你','我愛你們大家！啾～','我愛每一個看我直播的人，不管你幾歲、什麼性別']},
+  // Ame 的用藥真心話（A 級）
+  pills:{d:{stress:-12,darkness:6}, say:['昨晚睡不著吞了一大把安眠藥…現在超睏又頭痛…整個人爛透了…','吃了增強專注的藥，結果太亢奮在外面晃了好幾個小時…不敢相信這東西是醫生開的']},
+  // 最深、神格化/消失主題（A 級，KAngel）
+  candy:{d:{stress:-20,darkness:14}, say:['就算有一天我消失了，也請永遠別忘記我曾經存在過…','我體內有一個小小的銀河…但它也許有一天會崩解，趁還能看的時候好好凝望吧']},
+  // 對 P君（A 級 Ame ＋ B 級名句）
+  pchan:{d:{affection:8,stress:-4}, say:['真要我選一個的話，P醬還是粉絲…我大概會選你','P醬，你是我的製作人、我的男朋友、也是我的神']},
+  // 宣傳/推文（A 級：KAngel 表面 vs Ame 真心）
+  phone:{d:{followers:800}, say:['我還有一堆直播跟好玩的東西計畫中，記得訂閱我的頻道！','（其實）我在 KAngel 帳號上講的全是騙人的～我根本什麼都沒準備好']}
+};
+let spamCount={}, spamTimer={};
+document.querySelectorAll('.stk').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const s=btn.dataset.s, info=stkData[s];
+    spamCount[s]=(spamCount[s]||0)+1;
+    clearTimeout(spamTimer[s]); spamTimer[s]=setTimeout(()=>spamCount[s]=0,10000);
+    let d={...info.d};
+    if(spamCount[s]>=5){ for(const k in d)d[k]=Math.round(d[k]*0.3); if(spamCount[s]===5)ka('別一直洗貼圖啦 lol'); }
+    Stat.apply(d);
+    spawnClone(btn.textContent);
+    if(spamCount[s]<5) ka(info.say[Math.floor(Math.random()*info.say.length)]);
+    // OD combo: pills + candy within 3s
+    window._lastStk=window._lastStk||{};
+    window._lastStk[s]=Date.now();
+    if((s==='pills'&&Date.now()-(window._lastStk.candy||0)<3000)||
+       (s==='candy'&&Date.now()-(window._lastStk.pills||0)<3000)){
+      Stat.apply({stress:-(Stat.get('stress')),darkness:25});
+      toast('💊🍬 OVERDOSE'); ka('在我最終碎掉之前…我想盡可能發光……');
+    }
+  });
+});
+
+function spawnClone(emoji,heart){
+  const scene=document.getElementById('scene');
+  const c=document.createElement('div'); c.className='clone'; c.textContent=emoji;
+  const startX = heart? Math.random()*scene.clientWidth : 20+Math.random()*(scene.clientWidth-40);
+  let x=startX, y=heart? scene.clientHeight-40 : -40;
+  let vy=heart? -(3+Math.random()*3) : (1+Math.random()*2);
+  let vx=(Math.random()-0.5)*3, rot=0, vr=(Math.random()-0.5)*12;
+  c.style.left='0'; c.style.top='0'; scene.appendChild(c);
+  const g=heart?-0.05:0.28;
+  (function step(){
+    vy+=g; y+=vy; x+=vx; rot+=vr;
+    c.style.transform=`translate(${x}px,${y}px) rotate(${rot}deg)`;
+    c.style.opacity = heart? Math.max(0,1+(vy)/6):1;
+    if(y<scene.clientHeight+60 && !(heart&&vy>0&&y>scene.clientHeight-20)){requestAnimationFrame(step);}
+    else c.remove();
+  })();
+}
+
+/* ---------------- superchat ---------------- */
+let amt=100;
+document.querySelectorAll('.amt').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.amt').forEach(x=>x.classList.remove('sel'));
+  b.classList.add('sel'); amt=+b.dataset.amt;
+}));
+document.getElementById('send').addEventListener('click',sendSC);
+document.getElementById('scinput').addEventListener('keydown',e=>{if(e.key==='Enter')sendSC();});
+
+/* r 回應採可考證原句中譯／改寫（來源見 kangel-quotes-sourced.md） */
+const KW={
+  nice:{re:/cute|love|加油|喜歡|天使|可愛|最棒|kawaii/i, d:{affection:6}, r:'欸嘿…就是你！那個一直支持我的人！我愛你♡'},
+  hate:{re:/hate|滾|醜|婊|去死|噁|廢/i, d:{stress:10,darkness:6}, cls:'hate', r:'你們把這位網路天使弄得好傷心…（私下：希望酸民全都去死）'},
+  meta:{re:/p-?chan|p醬|中之人|本名|裡面的人/i, d:{stress:4}, r:'我有一件事一直瞞著大家…等時機到了再告訴你們，現在還是我的小秘密。', glitch:true},
+  dark:{re:/\bod\b|overdose|光|死|消える|end/i, d:{darkness:22,stress:-6}, r:'如果我離開網路，就會從網路天使變成…真正的天使，升上天堂。', darkfx:true},
+  rain:{re:/raincandy/i, d:{}, r:'（切到私密小帳 raincandy）我愛我的粉絲…只要他們給我錢跟認同。', egg:true}
+};
+function sendSC(){
+  const inp=document.getElementById('scinput'); const t=inp.value.trim(); if(!t)return;
+  inp.value='';
+  const tierAff={100:2,1000:5,10000:10,50000:18}[amt];
+  const tierFol={100:60,1000:400,10000:2500,50000:12000}[amt];
+  const cls = amt>=50000?'sc scred':'sc';
+  log(`<span class="${cls}">¥${amt.toLocaleString()} ${t}</span>`);
+  let d={affection:tierAff,followers:tierFol}, resp=null, extraCls='';
+  for(const k in KW){ if(KW[k].re.test(t)){ const w=KW[k];
+    for(const s in w.d)d[s]=(d[s]||0)+w.d[s]; resp=w.r;
+    if(w.cls)extraCls=w.cls;
+    if(w.glitch)glitchPulse();
+    if(w.darkfx)toast('🌑 陰暗模式');
+    if(w.egg)toast('🐇 raincandy');
+    break; } }
+  Stat.apply(d);
+  const amtLine = amt>=50000?'我愛你們大家！啾～你是我唯一真正需要的人！':
+                  amt>=10000?'我會把滿滿的愛送給這裡的每一個人～':
+                  amt>=1000?'謝謝你的 superchat～唸出你的名字囉！':'嗯…謝謝你一直支持我…';
+  ka(resp||amtLine, extraCls);
+}
+
+/* ---------------- MoodDirector ---------------- */
+/* say 改用可考證原句中譯（來源見 kangel-quotes-sourced.md） */
+const dialogs=[
+  {mood:'calm', say:'希望大家今天過得好！我超嗨的，因為一大早就起來準備下一場直播了～', opts:[
+    {t:'一起加油',d:{affection:5,stress:-3}},
+    {t:'衝粉絲數',d:{followers:1500,stress:6}},
+    {t:'……（不回）',d:{affection:-6,darkness:4}}]},
+  {mood:'stress', say:'最近收到好多惡意，老實說真的很累…可能得暫停直播一下，抱歉大家…', opts:[
+    {t:'等你回來會更強',d:{affection:6,stress:-10}},
+    {t:'遞藥給你',d:{stress:-14,darkness:8}},
+    {t:'別理酸民啦',d:{stress:-4}}]},
+  {mood:'dark', say:'就算有一天我消失了…也請永遠別忘記我曾經存在過，好嗎…？', opts:[
+    {t:'我永遠記得你',d:{affection:8,darkness:-8}},
+    {t:'別說傻話',d:{stress:-2}},
+    {t:'……',d:{darkness:10,affection:-4}}]},
+];
+function moodPick(){
+  const {stress:st,darkness:d}=Stat.s;
+  if(d>=60)return dialogs[2]; if(st>=55)return dialogs[1]; return dialogs[0];
+}
+function showDialog(dlg){
+  const box=document.getElementById('dialog');
+  box.querySelector('.say').innerHTML='<b>天使醬:</b> '+dlg.say;
+  const o=box.querySelector('.opts'); o.innerHTML='';
+  dlg.opts.forEach(op=>{ const b=document.createElement('button'); b.className='opt'; b.textContent=op.t;
+    b.onclick=()=>{ Stat.apply(op.d); box.classList.remove('show'); }; o.appendChild(b); });
+  box.classList.add('show');
+  clearTimeout(window._dtimeout);
+  window._dtimeout=setTimeout(()=>box.classList.remove('show'),9000);
+}
+let idle=0;
+function moodLoop(){
+  const interval=Math.max(8, 35-Stat.s.stress*0.2)*1000;
+  window._moodT=setTimeout(()=>{ showDialog(moodPick()); moodLoop(); }, interval);
+}
+document.addEventListener('pointerdown',()=>idle=0);
+setInterval(()=>{ idle++; if(idle===9){ ka('如果大家忘記我，我會哭的…P醬你還在嗎…'); Stat.apply({affection:-3,stress:3}); idle=0; } },5000);
+
+/* ---------------- fx helpers ---------------- */
+function glitchPulse(){ document.body.style.filter='invert(.08) hue-rotate(90deg)';
+  setTimeout(()=>document.body.style.filter='',160); }
+function toast(t){ const el=document.getElementById('toast'); el.textContent=t; el.classList.add('show');
+  clearTimeout(window._toastT); window._toastT=setTimeout(()=>el.classList.remove('show'),1600); }
+
+/* ---------------- boot ---------------- */
+render(); checkExtremes();
+log('系統：直播開始。用貼圖、superchat 與對話選項改變她的狀態。','sys');
+ka('嗨嗨～是你們的網路天使兼救世主 KAngel！衝一波啦！還有別忘了微笑喔！！！');
+setTimeout(moodLoop,4000);
+</script>
+</body>
+</html>

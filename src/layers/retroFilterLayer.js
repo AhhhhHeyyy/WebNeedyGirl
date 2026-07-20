@@ -59,6 +59,15 @@ export class RetroFilterLayer extends BaseIframeLayer {
     this.el.style.zIndex = String(FRONTMOST_Z);
   }
 
+  // EffectDirector's darknessOpacity(stats) -> here, mirrors the
+  // ng-retrofilter-toggle bridge above (one-directional postMessage, no
+  // reply expected). The iframe blends this on top of whatever the user's
+  // own vignette/grain sliders are set to rather than replacing them — see
+  // UI/retroFilter/script.js's getEffectiveOpa handling.
+  setDarknessIntensity(value) {
+    this.el.contentWindow?.postMessage({ type: 'ng-retrofilter-intensity', value }, window.location.origin);
+  }
+
   destroy() {
     this.toggleBtn.remove();
     super.destroy();

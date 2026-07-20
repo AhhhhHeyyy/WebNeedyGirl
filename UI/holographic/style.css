@@ -1,9 +1,28 @@
-html, body { background: #cdd2f0; }
-#gl { display: block; width: 100vw; height: 100vh; touch-action: none; }
+html, body { background: transparent; }
 
-/* ── Overlays ── */
+/* Positioned/sized by script.js from the parent's ng-holo-frame1-box message
+   (see holographicLayer.js's _frame1Box()) — this iframe itself is always
+   full-viewport now (BaseIframeLayer's default), so #panel below can use
+   position:fixed against the WHOLE stage instead of being cropped to
+   whatever small box this wrapper occupies. Hidden until the first message
+   arrives so it never flashes full-viewport-unmasked before Frame 1's real
+   box is known (mirrors the old "hidden until first _reposition()" comment
+   that used to live on the parent side). */
+#holo-clip {
+  position: absolute; visibility: hidden; overflow: hidden;
+  background: #cdd2f0;
+  mask-size: 100% 100%; -webkit-mask-size: 100% 100%;
+  mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat;
+  mask-position: center; -webkit-mask-position: center;
+}
+#gl { display: block; width: 100%; height: 100%; touch-action: none; }
+
+/* ── Overlays (baked into holographic itself — distinct from the standalone
+   UI/retroFilter effect) ── now absolute children of #holo-clip instead of
+   position:fixed against the whole iframe, so they still cover exactly
+   Frame 1's area instead of the full viewport. */
 #retro, #cf {
-  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  position: absolute; inset: 0;
   pointer-events: none; transition: opacity .3s;
 }
 #retro { z-index: 7; }
@@ -46,6 +65,15 @@ input[type=color]::-webkit-color-swatch { border: none; }
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: 13px;
 }
+
+/* ── Mode Preset dropdown ── */
+.mp-select {
+  border-radius: 8px; border: 1px solid rgba(198,178,238,0.52);
+  background: rgba(255,255,255,0.62); padding: 5px 8px;
+  font-size: 11.5px; color: #7862a8; font-family: inherit; cursor: pointer; outline: none;
+}
+.mp-select:focus { border-color: rgba(175,142,228,0.82); }
+.mp-hidden { display: none; }
 
 /* ── Hint ── */
 #hint {

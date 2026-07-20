@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>TV Glitch</title>
+<script src="../../shared/device-perf.js"></script>
+<script src="../../shared/state-sync.js"></script>
+<link rel="stylesheet" href="../../shared/panel.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<button id="panel-toggle" title="Controls">⚙</button>
+
+<div id="panel" class="closed">
+  <div class="sec">TV Glitch</div>
+  <div class="btn-row">
+    <button class="pbtn on" id="enabled-btn">⚡ Enabled</button>
+    <button class="pbtn on" id="continuous-btn">🔁 Continuous</button>
+  </div>
+  <div class="btn-row">
+    <button class="pbtn" id="static-btn" title="Freeze on one unchanging snapshot — no burst cycling, no per-frame shimmer">🧊 Static</button>
+  </div>
+
+  <div class="div"></div>
+
+  <div class="sec">Compositing</div>
+  <div class="sg" id="sg-overall-opacity"></div>
+
+  <div class="div"></div>
+
+  <div class="sec">Burst</div>
+  <div class="sg" id="sg-intensity"></div>
+  <div class="sg" id="sg-flicker-rate"></div>
+  <div class="sg" id="sg-interval"></div>
+  <div class="sg" id="sg-duration"></div>
+
+  <div class="div"></div>
+
+  <div class="sec">Glass Shards</div>
+  <div class="sg" id="sg-shards"></div>
+  <div class="sg" id="sg-glass-opacity"></div>
+  <div class="ov-head">
+    <span class="sg-label">Glass Inner Color</span>
+    <label class="cpick-wrap" title="Glass facet core color (radial gradient center)">
+      <input type="color" id="glass-inner-color" value="#eef5ff">
+    </label>
+  </div>
+  <div class="ov-head">
+    <span class="sg-label">Glass Outer Color</span>
+    <label class="cpick-wrap" title="Glass facet edge color (radial gradient edge)">
+      <input type="color" id="glass-outer-color" value="#8fb8ff">
+    </label>
+  </div>
+
+  <div class="div"></div>
+
+  <div class="sec">Ink Splash</div>
+  <div class="sg" id="sg-splash"></div>
+  <div class="sg" id="sg-splash-size"></div>
+  <div class="sg" id="sg-splash-viscosity"></div>
+  <div class="sg" id="sg-splash-irregularity"></div>
+
+  <div class="ov-head">
+    <span class="sg-label">Accent Color</span>
+    <label class="cpick-wrap" title="Glitch accent color">
+      <input type="color" id="accent-color" value="#e83fd1">
+    </label>
+  </div>
+
+  <div class="div"></div>
+
+  <div class="sec">Backdrop</div>
+  <div class="sg" id="sg-base-opacity"></div>
+  <div class="sg" id="sg-idle-floor"></div>
+  <div class="ov-head">
+    <span class="sg-label">Base Color</span>
+    <label class="cpick-wrap" title="Backdrop tint color">
+      <input type="color" id="base-color" value="#0c0620">
+    </label>
+  </div>
+
+  <div class="div"></div>
+
+  <div class="btn-row">
+    <button class="pbtn" id="trigger-btn">💥 Trigger Now</button>
+  </div>
+  <div class="btn-row">
+    <button class="pbtn" id="reset-btn">↺ Reset</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
