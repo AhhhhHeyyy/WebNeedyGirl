@@ -260,9 +260,9 @@ function positionCursorEl() {
 //              rest, higher = lighter touch (less lag settling in at rest).
 //   beta:      how fast the cutoff opens up as speed increases (px/s) —
 //              higher = faster-moving cursor sheds smoothing sooner.
-const ONE_EURO_MIN_CUTOFF = 4.0;
-const ONE_EURO_BETA = 0.015;
-const ONE_EURO_D_CUTOFF = 1.0;
+const ONE_EURO_MIN_CUTOFF = 20.0;
+const ONE_EURO_BETA = 30.015;
+const ONE_EURO_D_CUTOFF = 6.0;
 
 class LowPassFilter {
   constructor() { this.y = null; }

@@ -36,6 +36,7 @@ export class PixelCursorLayer extends BaseIframeLayer {
     // track the pointer, so the real position is sampled here in the parent
     // and forwarded in (mirrors holographicLayer.js's _forwardPointer).
     this.el.style.pointerEvents = 'none';
+    this.manager = opts.manager;
     this._panelOpen = false;
     this._finePointerMedia = window.matchMedia ? window.matchMedia(FINE_POINTER_QUERY) : null;
     this._isMobile = this._computeIsMobile();
@@ -106,8 +107,18 @@ export class PixelCursorLayer extends BaseIframeLayer {
     // prediction, the two extrapolated points routinely disagreed, which
     // read as jitter. Raw e.clientX/Y is a hair less "ahead" but is a single
     // ground-truth value both listeners agree on.
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    // Magnetically snap onto a sticker-list icon (StickerListLayer.
+    // getSnapPoint()) when the real pointer is close enough — the same
+    // rect/radius check that layer uses for its own hover/click hit-test,
+    // so the cursor is never shown magnetized to an icon that a click at
+    // this same real position wouldn't actually land on.
+    const stickerList = this.manager?.get('stickerList');
+    const snap = stickerList?.getSnapPoint?.(e.clientX, e.clientY);
+    const clientX = snap ? snap.x : e.clientX;
+    const clientY = snap ? snap.y : e.clientY;
+
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
 
     // Same-origin, so a direct call is legal — and unlike postMessage (an
     // async task the browser schedules onto the target realm's queue,

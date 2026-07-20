@@ -273,6 +273,14 @@ async function boot() {
     // Frame 1's own box — checked first, before either pop-up below, so a
     // click there never spawns Nested Scene 3 (it used to, since that check
     // ran first and returned early) or the man pop-up on top of the widget.
+    // Checked against the icon overlay's own padded on-screen box (see
+    // StickerListLayer.containsPointWithDeadZone), not just the underlying
+    // board sprite's Pixi bounds below — in narrow/mobile layout the icons
+    // float independently of that sprite, so relying on the sprite bounds
+    // alone let a near-miss mobile tap fall through to the man pop-up.
+    const stickerListOverlay = manager.get('stickerList');
+    if (stickerListOverlay && stickerListOverlay.containsPointWithDeadZone(e.clientX, e.clientY)) return;
+
     const listStickers = manager.get('listStickers');
     if (listStickers && listStickers.sprite.getBounds().contains(px, py)) return;
 

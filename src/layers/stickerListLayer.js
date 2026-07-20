@@ -29,6 +29,25 @@ import { LOGICAL_W } from '../core/Stage.js';
 //
 const Z = 22; // below RETRO_FRONTMOST_Z (25) so retroFilter's camera-lens overlay still reads as the true topmost post-process
 
+// Extra CSS-px padding around the icons' own union box that still counts as
+// "the sticker list" for main.js's stage-area click handler (see
+// containsPointWithDeadZone()) — a fat-finger tap that lands just outside a
+// small icon on mobile would otherwise fall through to whatever's behind it
+// (the "man" pop-up), since on a touchscreen there's no hover to narrow the
+// tap down first the way a mouse cursor does.
+const DEAD_ZONE_PADDING_PX = 28;
+
+// Magnetic radius (CSS px) around each icon's own rect that still counts as
+// "on" that icon for hover/click AND for the pixel-cursor's own visual snap
+// (see getSnapPoint(), called from pixelCursorLayer.js) — lets the user
+// approach an icon loosely instead of having to land exactly inside its
+// (fairly small, 17%-of-board-width) hit box. Deliberately smaller than
+// DEAD_ZONE_PADDING_PX: that one only has to keep a miss from falling through
+// to whatever's behind the whole row, this one has to disambiguate between 5
+// icons sitting fairly close together, so too generous a radius would start
+// snapping to the wrong neighbor.
+const SNAP_RADIUS_PX = 30;
+
 // Fraction of the vertical column's own width an icon occupies in narrow
 // mode (mirrored in UI/stickerList/style.css's `#sticker-row.vertical
 // .sticker-item` rule — the two can't literally share a constant across
@@ -156,13 +175,64 @@ export class StickerListLayer extends BaseIframeLayer {
     if (index !== -1) this._postHover(index, true);
   }
 
-  _indexAt(clientX, clientY) {
-    if (!this._itemRects) return -1;
+  // Union of the 5 icons' last-known on-screen boxes, padded by
+  // DEAD_ZONE_PADDING_PX. Used instead of the underlying listStickers board
+  // sprite's own Pixi bounds — in narrow/mobile layout the icon column
+  // floats independently in the side margin (see _reposition()'s "narrow"
+  // branch) and no longer overlaps the board sprite's hit box at all, so a
+  // tap that just misses an icon there would otherwise fall all the way
+  // through main.js's click handler to the "man" pop-up behind it.
+  containsPointWithDeadZone(clientX, clientY) {
+    if (!this.visible || !this._itemRects || !this._itemRects.length) return false;
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    for (const r of this._itemRects) {
+      if (!r) continue;
+      left = Math.min(left, r.left);
+      top = Math.min(top, r.top);
+      right = Math.max(right, r.left + r.width);
+      bottom = Math.max(bottom, r.top + r.height);
+    }
+    if (left > right) return false;
+    return clientX >= left - DEAD_ZONE_PADDING_PX && clientX <= right + DEAD_ZONE_PADDING_PX &&
+      clientY >= top - DEAD_ZONE_PADDING_PX && clientY <= bottom + DEAD_ZONE_PADDING_PX;
+  }
+
+  // Nearest icon to (clientX, clientY) — 0 distance if the point is already
+  // inside that icon's rect, otherwise the distance to its closest edge/
+  // corner. Single source of truth for both the magnetic hit-test
+  // (_indexAt) and the pixel-cursor's visual snap target (getSnapPoint),
+  // so a click only ever counts as landing on the icon the cursor is shown
+  // magnetized to, never a different one.
+  _nearestSnap(clientX, clientY) {
+    if (!this._itemRects) return null;
+    let bestIndex = -1, bestDist = Infinity, bestPoint = null;
     for (let i = 0; i < this._itemRects.length; i++) {
       const r = this._itemRects[i];
-      if (clientX >= r.left && clientX <= r.left + r.width && clientY >= r.top && clientY <= r.top + r.height) return i;
+      if (!r) continue;
+      const px = Math.max(r.left, Math.min(clientX, r.left + r.width));
+      const py = Math.max(r.top, Math.min(clientY, r.top + r.height));
+      const dist = Math.hypot(clientX - px, clientY - py);
+      if (dist < bestDist) { bestDist = dist; bestIndex = i; bestPoint = { x: px, y: py }; }
     }
-    return -1;
+    if (bestIndex === -1 || bestDist > SNAP_RADIUS_PX) return null;
+    return { index: bestIndex, point: bestPoint };
+  }
+
+  _indexAt(clientX, clientY) {
+    const snap = this._nearestSnap(clientX, clientY);
+    return snap ? snap.index : -1;
+  }
+
+  // Called by pixelCursorLayer.js on every real pointermove — the point the
+  // custom cursor sprite should actually be drawn at when the real pointer
+  // is within SNAP_RADIUS_PX of an icon (null when it isn't, i.e. render at
+  // the real pointer position as usual). Sharing _nearestSnap with the
+  // hover/click hit-test above guarantees the cursor is never shown sitting
+  // on an icon that a click at the same real position wouldn't register on.
+  getSnapPoint(clientX, clientY) {
+    if (!this.visible) return null;
+    const snap = this._nearestSnap(clientX, clientY);
+    return snap ? snap.point : null;
   }
 
   // Converts the iframe-local rects the iframe measured for its own 5
