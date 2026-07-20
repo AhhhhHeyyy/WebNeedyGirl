@@ -72,6 +72,12 @@ html, body {
   opacity: 1;
   transform: scale(1);
   transition: opacity 0.14s ease, transform 0.22s cubic-bezier(.34,1.56,.64,1);
+  /* Idle pose, read by .sticker-img's transform below — .hovering overrides
+     these (not the .sticker-img transform directly) so the click bounce
+     keyframes can multiply --jelly-scale/rotate by --jelly-rot and land on
+     the correct pose whether or not the icon is currently hovered. */
+  --jelly-scale: 1;
+  --jelly-rot: 0deg;
 }
 .sticker-item.entered {
   opacity: 1;
@@ -96,15 +102,43 @@ html, body {
   -webkit-user-drag: none;
   user-select: none;
   transform-origin: 50% 50%;
+  transform: scale(var(--jelly-scale)) rotate(var(--jelly-rot));
   transition: transform 0.28s cubic-bezier(.34,1.56,.64,1);
   pointer-events: none;
 }
 /* .hovering is toggled by script.js on 'ng-stickerlist-hover' messages from
    the parent — real hover is detected in the parent document (a window-
    level pointermove hit-tested against this icon's last-reported rect, see
-   stickerListLayer.js), not in here, so this can't be a plain CSS :hover. */
-.sticker-item.hovering .sticker-img {
-  transform: scale(1.22) rotate(var(--hover-rot, 8deg));
+   stickerListLayer.js), not in here, so this can't be a plain CSS :hover.
+   On mobile the same class/message is also driven by a long-press timer
+   (stickerListLayer.js's touch hold-to-hover) instead of a real mouse-over,
+   so a held finger reaches this identical scaled/tilted pose. */
+.sticker-item.hovering {
+  --jelly-scale: 1.22;
+  --jelly-rot: var(--hover-rot, 8deg);
+}
+
+/* Click "dui dui" jelly bounce — script.js's 'ng-stickerlist-click' handler
+   toggles .clicking (forcing a reflow first so a rapid re-click restarts the
+   animation instead of no-opping). Squash/stretch keyframes multiply the
+   current --jelly-scale/--jelly-rot pose (see above) rather than hard-coding
+   scale(1), so a click lands on the right bounce baseline whether the icon
+   is idle or already hover-lifted. animationend (script.js) removes the
+   class again so it falls back to the plain transition-driven pose after. */
+.sticker-item.clicking .sticker-img {
+  animation: sl-jelly-bounce 0.6s cubic-bezier(.32,.1,.2,1);
+}
+html.ng-paused .sticker-item.clicking .sticker-img { animation-play-state: paused; }
+
+@keyframes sl-jelly-bounce {
+  0%   { transform: scale(var(--jelly-scale), var(--jelly-scale)) rotate(var(--jelly-rot)); }
+  13%  { transform: scale(calc(var(--jelly-scale) * 0.55), calc(var(--jelly-scale) * 1.55)) rotate(var(--jelly-rot)); }
+  30%  { transform: scale(calc(var(--jelly-scale) * 1.45), calc(var(--jelly-scale) * 0.62)) rotate(var(--jelly-rot)); }
+  47%  { transform: scale(calc(var(--jelly-scale) * 0.72), calc(var(--jelly-scale) * 1.32)) rotate(var(--jelly-rot)); }
+  63%  { transform: scale(calc(var(--jelly-scale) * 1.2), calc(var(--jelly-scale) * 0.82)) rotate(var(--jelly-rot)); }
+  78%  { transform: scale(calc(var(--jelly-scale) * 0.9), calc(var(--jelly-scale) * 1.12)) rotate(var(--jelly-rot)); }
+  90%  { transform: scale(calc(var(--jelly-scale) * 1.05), calc(var(--jelly-scale) * 0.96)) rotate(var(--jelly-rot)); }
+  100% { transform: scale(var(--jelly-scale), var(--jelly-scale)) rotate(var(--jelly-rot)); }
 }
 
 /* Semi-transparent rainbow-gradient filter, masked to the sticker's own

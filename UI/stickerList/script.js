@@ -83,6 +83,15 @@ let rafId = null;
 let paused = false;
 let lastTs = 0;
 
+// Spawn "pop" bounce — clone scales in from 0 with a single overshoot past 1
+// before settling, so it reads as springing out rather than just appearing.
+const SPAWN_BOUNCE_MS = 380;
+function easeOutBack(t) {
+  const c1 = 1.70158;
+  const c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
 // Forwarded on every 'ng-stickerlist-position' message (see
 // stickerListLayer.js) — the fixed CSS-px size below was tuned against a
 // ~1920x1080 desktop viewport, so it's scaled down by this ratio on a
@@ -90,7 +99,7 @@ let lastTs = 0;
 let cloneScale = 1;
 
 function spawnClone(file) {
-  const size = (96 + Math.random() * 64) * cloneScale;
+  const size = (150 + Math.random() * 100) * cloneScale;
   const x = Math.random() * Math.max(0, innerWidth - size);
   const y = Math.random() * innerHeight * 0.6;
   const rot = (Math.random() - 0.5) * 60;
@@ -101,7 +110,7 @@ function spawnClone(file) {
   el.draggable = false;
   el.style.width = `${size}px`;
   el.style.height = `${size}px`;
-  el.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg)`;
+  el.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg) scale(0)`;
   clonesLayer.appendChild(el);
 
   activeClones.push({
@@ -109,6 +118,8 @@ function spawnClone(file) {
     vx: (Math.random() - 0.5) * 160,
     vy: -80 - Math.random() * 120,
     vrot: (Math.random() - 0.5) * 240,
+    spawnTs: performance.now(),
+    popped: false,
   });
 
   ensureLoop();
@@ -138,7 +149,15 @@ function tick(ts) {
     c.x += c.vx * dt;
     c.y += c.vy * dt;
     c.rot += c.vrot * dt;
-    c.el.style.transform = `translate(${c.x}px, ${c.y}px) rotate(${c.rot}deg)`;
+
+    let scale = 1;
+    if (!c.popped) {
+      const t = Math.min((ts - c.spawnTs) / SPAWN_BOUNCE_MS, 1);
+      scale = easeOutBack(t);
+      if (t >= 1) c.popped = true;
+    }
+
+    c.el.style.transform = `translate(${c.x}px, ${c.y}px) rotate(${c.rot}deg) scale(${scale})`;
 
     if (c.y - c.size > innerHeight) {
       c.el.remove();
@@ -148,6 +167,25 @@ function tick(ts) {
 
   if (activeClones.length && !paused) rafId = requestAnimationFrame(tick);
 }
+
+// ── Click "dui dui" jelly bounce ────────────────────────────────────────
+// Re-triggering a CSS animation by re-adding a class that's already present
+// is a no-op, so a rapid re-click needs a forced reflow (reading offsetWidth)
+// between the remove and the re-add to actually restart it from frame 0.
+function bounceClick(index) {
+  const item = items[index];
+  if (!item) return;
+  item.classList.remove('clicking');
+  void item.offsetWidth;
+  item.classList.add('clicking');
+}
+// Delegated on the row instead of per-image — the animation always finishes
+// (it's not something that gets interrupted mid-flight the way a click-drag
+// might cancel it), so removing the class here is just cleanup, not a
+// safety net a per-item listener would need to duplicate five times.
+rowEl.addEventListener('animationend', (e) => {
+  if (e.animationName === 'sl-jelly-bounce') e.target.closest('.sticker-item')?.classList.remove('clicking');
+});
 
 // ── Bridges to the parent frame ─────────────────────────────────────────
 addEventListener('resize', postRects);
@@ -179,6 +217,7 @@ addEventListener('message', (e) => {
   } else if (d?.type === 'ng-stickerlist-click') {
     const file = STICKERS[d.index];
     if (file) spawnClone(file);
+    bounceClick(d.index);
   } else if (d?.type === 'ng-effect-pause') {
     paused = true;
     if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }

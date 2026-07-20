@@ -21,7 +21,7 @@
     // Viewport width is a more honest proxy for how much benefit extra
     // resolution actually buys (phones/tablets rarely exceed ~1024 CSS px
     // even in landscape).
-    const viewportCap = window.innerWidth <= 1024 ? Math.min(maxDesktop, 1.5) : maxDesktop;
+    const viewportCap = window.innerWidth <= 1024 ? Math.min(maxDesktop, 1.75) : maxDesktop;
     let scale = Math.min(window.devicePixelRatio || 1, viewportCap);
     const longest = Math.max(window.innerWidth, window.innerHeight) * scale;
     if (longest > maxLongestSide) scale *= maxLongestSide / longest;

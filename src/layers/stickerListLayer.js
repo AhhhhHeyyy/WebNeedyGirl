@@ -67,6 +67,15 @@ const NARROW_MARGIN_FACTOR = 1.15;
 // horizontal row (desktop/wide viewports) is untouched.
 const MOBILE_ICON_SCALE = 1.5;
 
+// Touch has no native hover, so a held finger gets its own gesture instead:
+// hold past this on an icon to enter the same '.hovering' pose a desktop
+// mouseover gets (see _startTouchHoldHover). Mirrors listStickersLayer.js's
+// own LONG_PRESS_MS/MOVE_CANCEL_PX for the board's long-press-to-lift, kept
+// as separate local constants (that file's board pin and this file's icon
+// hover are independent gestures on different elements — nothing to share).
+const LONG_PRESS_MS = 450;
+const LONG_PRESS_MOVE_CANCEL_PX = 12;
+
 export class StickerListLayer extends BaseIframeLayer {
   constructor(opts) {
     super(opts);
@@ -107,8 +116,15 @@ export class StickerListLayer extends BaseIframeLayer {
     // untouched by this and still fires normally.
     this._onWindowPointerDown = (e) => {
       if (!this.visible) return;
-      if (this._indexAt(e.clientX, e.clientY) !== -1) e.stopPropagation();
+      const i = this._indexAt(e.clientX, e.clientY);
+      if (i !== -1) e.stopPropagation();
+      if (e.pointerType !== 'mouse') this._startTouchHoldHover(i, e);
     };
+    // Touch-only long-press-to-hover bookkeeping (see _startTouchHoldHover).
+    this._pressTimer = null;
+    this._pressCleanup = null;
+    this._touchHoverActive = false;
+    this._onTouchHoldRelease = () => this._cancelTouchHoldHover();
     window.addEventListener('pointermove', this._onWindowPointerMove);
     window.addEventListener('click', this._onWindowClick);
     window.addEventListener('pointerdown', this._onWindowPointerDown, true);
@@ -179,6 +195,51 @@ export class StickerListLayer extends BaseIframeLayer {
     if (this._hoveredIndex !== -1) this._postHover(this._hoveredIndex, false);
     this._hoveredIndex = index;
     if (index !== -1) this._postHover(index, true);
+  }
+
+  // Fired from _onWindowPointerDown for any non-mouse pointer landing on an
+  // icon — starts a LONG_PRESS_MS hold timer that, if not cancelled by too
+  // much finger drift or an early release, flips the icon into the same
+  // '.hovering' pose _onWindowPointerMove drives for a real mouse-over.
+  // Released/cancelled the moment the hold ends (no listStickersLayer-style
+  // "pin until an outside tap" — this is just "show the hover pose while
+  // held"), so the finger lifting off is what puts it back to idle.
+  _startTouchHoldHover(index, e) {
+    this._cancelTouchHoldHover();
+    if (index === -1) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const onMove = (ev) => {
+      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > LONG_PRESS_MOVE_CANCEL_PX) this._cancelTouchHoldHover();
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', this._onTouchHoldRelease);
+    window.addEventListener('pointercancel', this._onTouchHoldRelease);
+    this._pressCleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', this._onTouchHoldRelease);
+      window.removeEventListener('pointercancel', this._onTouchHoldRelease);
+    };
+    this._pressTimer = setTimeout(() => {
+      this._pressTimer = null;
+      this._touchHoverActive = true;
+      this._setHovered(index);
+    }, LONG_PRESS_MS);
+  }
+
+  // Ends the hold (timer not yet fired, or the hover pose already applied)
+  // and drops the icon back to idle if the pose was actually showing —
+  // called on early release/cancel/drift-cancel, and unconditionally at the
+  // start of every new touch so a stray leftover timer/listener from a prior
+  // gesture can't fire late.
+  _cancelTouchHoldHover() {
+    if (this._pressTimer) { clearTimeout(this._pressTimer); this._pressTimer = null; }
+    this._pressCleanup?.();
+    this._pressCleanup = null;
+    if (this._touchHoverActive) {
+      this._touchHoverActive = false;
+      this._setHovered(-1);
+    }
   }
 
   // Union of the 5 icons' last-known on-screen boxes, padded by
@@ -395,10 +456,14 @@ export class StickerListLayer extends BaseIframeLayer {
 
   setVisible(visible) {
     super.setVisible(visible);
-    if (!visible) this._setHovered(-1);
+    if (!visible) {
+      this._cancelTouchHoldHover();
+      this._setHovered(-1);
+    }
   }
 
   destroy() {
+    this._cancelTouchHoldHover();
     this._offManagerChange();
     this._offResize();
     this.stage.app.ticker.remove(this._tick);
