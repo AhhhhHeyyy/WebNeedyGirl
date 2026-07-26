@@ -22,17 +22,24 @@ const Z_INDEX = 5000; // above every in-game layer/effect, below #rotate-prompt 
 // modal shrinks to fit BOTH viewport axes instead of only ever reacting to
 // width and silently overflowing/clipping on short (e.g. landscape phone)
 // viewports.
-const DESIGN_W = 760;
-const FIT_MARGIN_W = 0.94; // was `94vw`
-const FIT_MARGIN_H = 0.92; // headroom so the popup never touches the top/bottom edge
-
+//
 // Same "is this a phone/tablet" viewport-width proxy shared/device-perf.js
 // already uses elsewhere in the project (touch devices rarely exceed ~1024
-// CSS px even in landscape) — user-requested "mobile版的通話視窗有點太大了
-// 縮小一半": the popup reads as oversized on a phone screen even once it's
-// already fit-to-viewport, so mobile gets an extra flat 0.5x on top of that.
+// CSS px even in landscape). Mobile gets its own, smaller design width
+// (user-requested "mobile版的通話視窗有點太大了 縮小一半") rather than the
+// desktop design just being additionally multiplied down — an earlier
+// version did that with a flat extra 0.5x scale, but every size below
+// (avatar/buttons/name/labels) is fixed px specifically so it ends up
+// screen-accurate through ONE multiply (fit-scale) instead of vw already
+// answering to the viewport once and then fit-scale answering to it again on
+// top — that double-counting was crushing the mobile text down twice, past
+// legible (user-requested follow-up: "都要...自適應放大 不然會太小"). Keep
+// this in sync with the `@media (max-width: 1024px)` block below.
+const DESIGN_W = 760;
 const MOBILE_BREAKPOINT_PX = 1024;
-const MOBILE_SCALE_FACTOR = 0.5;
+const MOBILE_DESIGN_W = 460;
+const FIT_MARGIN_W = 0.94; // was `94vw`
+const FIT_MARGIN_H = 0.92; // headroom so the popup never touches the top/bottom edge
 
 // Same lang set (and the same saved/detected choice — see DialogueStore's
 // own loadLang) the loading screen's picker and Frame 1's dialogue bubbles
@@ -83,6 +90,9 @@ function injectStyle() {
       opacity: 1;
       pointer-events: auto;
     }
+    @media (max-width: ${MOBILE_BREAKPOINT_PX}px) {
+      #phone-call-overlay { width: ${MOBILE_DESIGN_W}px; }
+    }
     #phone-call-overlay .pco-window {
       border: 3px solid #8fd0f2;
       overflow: hidden;
@@ -132,7 +142,7 @@ function injectStyle() {
     }
     #phone-call-overlay .pco-name {
       margin-top: 12px; font-weight: 700; letter-spacing: .03em;
-      font-size: clamp(15px, 2.1vw, 21px); color: #6a3f7a;
+      font-size: 19px; color: #6a3f7a;
       text-shadow: 0 1px 0 rgba(255,255,255,0.5);
     }
     #phone-call-overlay .pco-actions {
@@ -141,9 +151,9 @@ function injectStyle() {
       padding: 0 8% 6px;
     }
     #phone-call-overlay .pco-action { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-    #phone-call-overlay .pco-action-label { font-size: clamp(13px, 1.6vw, 17px); font-weight: 700; color: #6a3f7a; }
+    #phone-call-overlay .pco-action-label { font-size: 15px; font-weight: 700; color: #6a3f7a; }
     #phone-call-overlay .pco-btn {
-      width: clamp(58px, 11vw, 84px); height: clamp(58px, 11vw, 84px);
+      width: 74px; height: 74px;
       border-radius: 50%; border: none; cursor: pointer;
       display: flex; align-items: center; justify-content: center; color: #fff;
       box-shadow: 0 6px 16px rgba(40, 10, 30, 0.3);
@@ -230,11 +240,11 @@ function applyFitScale() {
   if (!root) return;
   const naturalH = root.offsetHeight;
   if (!naturalH) return; // e.g. mid-transition while display is toggling
-  const scaleW = (window.innerWidth * FIT_MARGIN_W) / DESIGN_W;
-  const scaleH = (window.innerHeight * FIT_MARGIN_H) / naturalH;
   const isMobile = window.innerWidth <= MOBILE_BREAKPOINT_PX;
-  const scale = Math.min(1, scaleW, scaleH) * (isMobile ? MOBILE_SCALE_FACTOR : 1);
-  root.style.setProperty('--pco-scale', scale);
+  const designW = isMobile ? MOBILE_DESIGN_W : DESIGN_W; // must track the `@media` block above
+  const scaleW = (window.innerWidth * FIT_MARGIN_W) / designW;
+  const scaleH = (window.innerHeight * FIT_MARGIN_H) / naturalH;
+  root.style.setProperty('--pco-scale', Math.min(1, scaleW, scaleH));
 }
 
 function ensureRoot() {

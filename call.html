@@ -65,6 +65,12 @@
      Breakpoint matches shared/device-perf.js's own mobile/tablet proxy. */
   @media (max-width: 1024px) {
     #cam-window { width: 620px; }
+    /* #cam-fallback's font-size is authored in the same 1920x1080 logical
+       space as everything else (see #call-stage above), so on a small mobile
+       viewport it shrinks by the whole stage's own fit-scale on top of
+       already being a small font — reads as illegibly tiny otherwise
+       (user-requested: text content should stay legible on mobile). */
+    #cam-fallback { font-size: 34px; }
   }
 
   /* Landscape-only, same widget as index.html's #rotate-prompt (same

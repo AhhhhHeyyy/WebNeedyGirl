@@ -43,6 +43,24 @@ const FRAME_REF_W = 1281; // UI/Frame 1.png's native px width — see chat.chatb
 const BUBBLE_Z = 13; // above chat's message (11) / border (12) DOM overlays
 const CHOICE_Z = 23; // above stickerList's icons (22), below yandereProto hearts (24) and retroFilter's constant front (25)
 
+// --ng-u/--ng-cu (below) are both derived from the overall game viewport's
+// own fit-scale (Stage.js's Math.min(w/1920, h/1080), directly for --ng-cu,
+// indirectly via frame1's on-screen width for --ng-u) — on a small mobile
+// screen that scale is small, so every text-bearing panel using them (the
+// dialogue bubble, the choice bar/buttons, the stat meter) shrinks in lock-
+// step with the whole game's zoom-out and reads as too small to read
+// (user-requested "對話跟選項 通話視窗 屬性等有包含文字的內容都要是mobile
+// 模式的視窗大小而自適應放大 不然會太小"). --ng-tu/--ng-tcu are a second,
+// boosted copy of those same units — used only for the parts of each panel
+// that need to stay legible (text, icons, bar/border thickness) — so mobile
+// gets those visibly bigger without changing the panels' own anchor
+// positioning (which still keys off the true, unboosted unit).
+const MOBILE_BREAKPOINT_PX = 1024; // same phone/tablet proxy as shared/device-perf.js
+const MOBILE_TEXT_BOOST = 1.6;
+function textBoost() {
+  return window.innerWidth <= MOBILE_BREAKPOINT_PX ? MOBILE_TEXT_BOOST : 1;
+}
+
 const STYLE_ID = 'ng-dialogue-style';
 
 // Builds a `clip-path: polygon(...)` that cuts one square notch (size s, in
@@ -89,15 +107,15 @@ function ensureStyles() {
       pointer-events: auto;
       box-sizing: border-box;
       background: linear-gradient(160deg, rgba(180, 124, 240, 0.75), rgba(140, 76, 212, 0.82));
-      border: calc(var(--ng-u) * 4) solid #fff;
-      clip-path: ${pixelCornerClip('--ng-u', 8)};
-      padding: calc(var(--ng-u) * 18) calc(var(--ng-u) * 24);
-      filter: drop-shadow(calc(var(--ng-u) * 4) calc(var(--ng-u) * 4) 0 rgba(20, 8, 40, 0.55));
+      border: calc(var(--ng-tu) * 4) solid #fff;
+      clip-path: ${pixelCornerClip('--ng-tu', 8)};
+      padding: calc(var(--ng-tu) * 18) calc(var(--ng-tu) * 24);
+      filter: drop-shadow(calc(var(--ng-tu) * 4) calc(var(--ng-tu) * 4) 0 rgba(20, 8, 40, 0.55));
       backdrop-filter: blur(9px);
       -webkit-backdrop-filter: blur(9px);
       color: #fff;
       font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
-      font-size: calc(var(--ng-u) * 32);
+      font-size: calc(var(--ng-tu) * 32);
       line-height: 1.5;
       text-align: center;
       white-space: pre-line;
@@ -108,8 +126,8 @@ function ensureStyles() {
     }
     .ng-dlg-bubble.show { opacity: 1; transform: translateY(0); }
     .ng-dlg-hint {
-      margin-top: calc(var(--ng-u) * 8);
-      font-size: calc(var(--ng-u) * 14);
+      margin-top: calc(var(--ng-tu) * 8);
+      font-size: calc(var(--ng-tu) * 14);
       opacity: .6;
       text-align: right;
     }
@@ -129,10 +147,10 @@ function ensureStyles() {
     }
     .ng-stat-icon {
       flex: 0 0 auto;
-      height: calc(var(--ng-u) * 32);
+      height: calc(var(--ng-tu) * 32);
       width: auto;
       image-rendering: pixelated; /* small hand-drawn sprite, scaled up — see pixelCursor/style.css for the same convention */
-      filter: drop-shadow(0 0 calc(var(--ng-u) * 2) rgba(255, 255, 255, 0.7));
+      filter: drop-shadow(0 0 calc(var(--ng-tu) * 2) rgba(255, 255, 255, 0.7));
     }
     .ng-stat-title {
       flex: 0 0 auto;
@@ -144,29 +162,29 @@ function ensureStyles() {
          shorter than "Affection"/"Darkness"'s). Pinning the title column to
          one shared width makes every row's bar start (and end) at the same
          x regardless of label. */
-      min-width: calc(var(--ng-u) * 100);
+      min-width: calc(var(--ng-tu) * 100);
       font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
       font-weight: 600;
-      font-size: calc(var(--ng-u) * 21);
+      font-size: calc(var(--ng-tu) * 21);
       letter-spacing: .03em;
       color: #4b3d73;
       /* Silver.ttf ships one static weight, so plain font-weight alone only
          gets a browser's (inconsistent) synthetic-bold pass — a hairline
          stroke reinforces it just enough to read as weighted without going
          heavy. */
-      -webkit-text-stroke: calc(var(--ng-u) * 0.25) #4b3d73;
-      text-shadow: 0 0 calc(var(--ng-u) * 3) rgba(255, 255, 255, 0.8);
+      -webkit-text-stroke: calc(var(--ng-tu) * 0.25) #4b3d73;
+      text-shadow: 0 0 calc(var(--ng-tu) * 3) rgba(255, 255, 255, 0.8);
       white-space: nowrap;
     }
     .ng-stat-bar {
       flex: 1 1 auto;
       position: relative;
-      height: calc(var(--ng-u) * 26);
+      height: calc(var(--ng-tu) * 26);
       box-sizing: border-box;
       overflow: hidden;
-      border: calc(var(--ng-u) * 3) solid #fff;
+      border: calc(var(--ng-tu) * 3) solid #fff;
       background: linear-gradient(90deg, #ffbfe0 0%, #ffe3d6 55%, #fffaf4 100%);
-      box-shadow: 0 0 0 calc(var(--ng-u) * 1) rgba(40, 15, 70, 0.55);
+      box-shadow: 0 0 0 calc(var(--ng-tu) * 1) rgba(40, 15, 70, 0.55);
     }
     .ng-stat-bar-fill {
       position: absolute;
@@ -193,13 +211,13 @@ function ensureStyles() {
     .ng-dlg-choice-prompt {
       font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
       color: #fff;
-      font-size: calc(var(--ng-cu) * 36);
+      font-size: calc(var(--ng-tcu) * 36);
       text-align: center;
       background: rgba(124, 66, 196, 0.72);
-      border: calc(var(--ng-cu) * 4) solid #fff;
-      clip-path: ${pixelCornerClip('--ng-cu', 8)};
-      filter: drop-shadow(calc(var(--ng-cu) * 4) calc(var(--ng-cu) * 4) 0 rgba(20, 8, 40, 0.55));
-      padding: calc(var(--ng-cu) * 14) calc(var(--ng-cu) * 26);
+      border: calc(var(--ng-tcu) * 4) solid #fff;
+      clip-path: ${pixelCornerClip('--ng-tcu', 8)};
+      filter: drop-shadow(calc(var(--ng-tcu) * 4) calc(var(--ng-tcu) * 4) 0 rgba(20, 8, 40, 0.55));
+      padding: calc(var(--ng-tcu) * 14) calc(var(--ng-tcu) * 26);
       backdrop-filter: blur(9px);
       -webkit-backdrop-filter: blur(9px);
       max-width: 100%;
@@ -208,20 +226,20 @@ function ensureStyles() {
     .ng-dlg-choice-row {
       display: flex;
       flex-direction: column;
-      gap: calc(var(--ng-cu) * 12);
+      gap: calc(var(--ng-tcu) * 12);
       width: 100%;
     }
     .ng-dlg-choice-btn {
       width: 100%;
       box-sizing: border-box;
       font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
-      font-size: calc(var(--ng-cu) * 30);
+      font-size: calc(var(--ng-tcu) * 30);
       color: #fff;
       background: linear-gradient(160deg, rgba(180, 124, 240, 0.68), rgba(140, 76, 212, 0.76));
-      border: calc(var(--ng-cu) * 4) solid #fff;
-      clip-path: ${pixelCornerClip('--ng-cu', 8)};
-      filter: drop-shadow(calc(var(--ng-cu) * 4) calc(var(--ng-cu) * 4) 0 rgba(20, 8, 40, 0.55));
-      padding: calc(var(--ng-cu) * 15) calc(var(--ng-cu) * 22);
+      border: calc(var(--ng-tcu) * 4) solid #fff;
+      clip-path: ${pixelCornerClip('--ng-tcu', 8)};
+      filter: drop-shadow(calc(var(--ng-tcu) * 4) calc(var(--ng-tcu) * 4) 0 rgba(20, 8, 40, 0.55));
+      padding: calc(var(--ng-tcu) * 15) calc(var(--ng-tcu) * 22);
       cursor: none; /* see .ng-dlg-bubble's cursor:none above */
       backdrop-filter: blur(9px);
       -webkit-backdrop-filter: blur(9px);
@@ -229,11 +247,11 @@ function ensureStyles() {
     }
     .ng-dlg-choice-btn:hover {
       background: linear-gradient(160deg, rgba(206, 156, 255, 0.8), rgba(166, 108, 236, 0.84));
-      transform: translate(calc(var(--ng-cu) * -1), calc(var(--ng-cu) * -1));
-      filter: drop-shadow(calc(var(--ng-cu) * 5) calc(var(--ng-cu) * 5) 0 rgba(20, 8, 40, 0.55));
+      transform: translate(calc(var(--ng-tcu) * -1), calc(var(--ng-tcu) * -1));
+      filter: drop-shadow(calc(var(--ng-tcu) * 5) calc(var(--ng-tcu) * 5) 0 rgba(20, 8, 40, 0.55));
     }
     .ng-dlg-choice-btn:active {
-      transform: translate(calc(var(--ng-cu) * 4), calc(var(--ng-cu) * 4));
+      transform: translate(calc(var(--ng-tcu) * 4), calc(var(--ng-tcu) * 4));
       filter: none;
     }
   `;
@@ -383,7 +401,9 @@ export class Frame1Layer extends BaseImageLayer {
       zIndex: BUBBLE_Z,
       display: 'flex',
       onReposition: (b) => {
-        wrap.style.setProperty('--ng-u', `${b.width / FRAME_REF_W}px`);
+        const u = b.width / FRAME_REF_W;
+        wrap.style.setProperty('--ng-u', `${u}px`);
+        wrap.style.setProperty('--ng-tu', `${u * textBoost()}px`);
       },
     });
     // Always shown regardless of frame1.sprite.visible — see this file's top
@@ -421,7 +441,9 @@ export class Frame1Layer extends BaseImageLayer {
     // scale factor instead of a ratio-of-box-width like the bubble's --ng-u —
     // 1 unit == 1 logical (1920x1080-space) px, same space every Pixi sprite
     // on stage is already authored in.
-    this._choiceParts.bar.style.setProperty('--ng-cu', `${this.stage.scaleFactor}px`);
+    const cu = this.stage.scaleFactor;
+    this._choiceParts.bar.style.setProperty('--ng-cu', `${cu}px`);
+    this._choiceParts.bar.style.setProperty('--ng-tcu', `${cu * textBoost()}px`);
   }
 
   _render(snap) {
@@ -513,12 +535,14 @@ export class Frame1Layer extends BaseImageLayer {
     const left = right - WIDTH_U * u;
     const top = fb.y + fb.height + TOP_OFFSET_U * u;
 
+    const boost = textBoost();
     const prev = this._statHudLastPos;
-    if (prev && Math.abs(prev.left - left) < 0.5 && Math.abs(prev.top - top) < 0.5 && Math.abs(prev.u - u) < 0.0001) return;
-    this._statHudLastPos = { left, top, u };
+    if (prev && Math.abs(prev.left - left) < 0.5 && Math.abs(prev.top - top) < 0.5 && Math.abs(prev.u - u) < 0.0001 && prev.boost === boost) return;
+    this._statHudLastPos = { left, top, u, boost };
 
     Object.assign(this._statHud.style, { left: `${left}px`, top: `${top}px`, width: `${WIDTH_U * u}px` });
     this._statHud.style.setProperty('--ng-u', `${u}px`);
+    this._statHud.style.setProperty('--ng-tu', `${u * boost}px`);
   }
 
   destroy() {
