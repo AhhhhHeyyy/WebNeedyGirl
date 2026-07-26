@@ -16,6 +16,16 @@ const AVATAR_URL = 'Icon_jine_ame.png';
 const ANSWERED_PAGE_URL = 'call.html';
 const Z_INDEX = 5000; // above every in-game layer/effect, below #rotate-prompt (9999) and #loading-screen (10000)
 
+// Fixed "design" width the modal is authored at (was the 760px cap inside the
+// old `min(94vw, 760px)` CSS). --pco-scale below is computed the same way
+// Stage.js's resize() fits the Pixi canvas — Math.min(w/W, h/H) — so the
+// modal shrinks to fit BOTH viewport axes instead of only ever reacting to
+// width and silently overflowing/clipping on short (e.g. landscape phone)
+// viewports.
+const DESIGN_W = 760;
+const FIT_MARGIN_W = 0.94; // was `94vw`
+const FIT_MARGIN_H = 0.92; // headroom so the popup never touches the top/bottom edge
+
 // Same lang set (and the same saved/detected choice — see DialogueStore's
 // own loadLang) the loading screen's picker and Frame 1's dialogue bubbles
 // already use, so the call modal always agrees with the rest of the app
@@ -52,8 +62,8 @@ function injectStyle() {
   style.textContent = `
     #phone-call-overlay {
       position: fixed; left: 50%; top: 50%;
-      transform: translate(-50%, -50%) scale(0.85);
-      width: min(94vw, 760px);
+      transform: translate(-50%, -50%) scale(calc(var(--pco-scale, 1) * 0.85));
+      width: ${DESIGN_W}px;
       z-index: ${Z_INDEX};
       font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
       opacity: 0;
@@ -61,7 +71,7 @@ function injectStyle() {
       pointer-events: none;
     }
     #phone-call-overlay.open {
-      transform: translate(-50%, -50%) scale(1);
+      transform: translate(-50%, -50%) scale(var(--pco-scale, 1));
       opacity: 1;
       pointer-events: auto;
     }
@@ -205,10 +215,26 @@ function applyLang(lang) {
   if (declineLabelEl) declineLabelEl.textContent = t.decline;
 }
 
+// root.offsetHeight is the element's unscaled layout box (CSS transforms
+// don't affect layout), so this is safe to read regardless of the scale
+// already applied from a previous resize.
+function applyFitScale() {
+  if (!root) return;
+  const naturalH = root.offsetHeight;
+  if (!naturalH) return; // e.g. mid-transition while display is toggling
+  const scaleW = (window.innerWidth * FIT_MARGIN_W) / DESIGN_W;
+  const scaleH = (window.innerHeight * FIT_MARGIN_H) / naturalH;
+  const scale = Math.min(1, scaleW, scaleH);
+  root.style.setProperty('--pco-scale', scale);
+}
+
 function ensureRoot() {
   if (root) return root;
   injectStyle();
   buildDom();
+  window.addEventListener('resize', applyFitScale);
+  window.addEventListener('orientationchange', applyFitScale);
+  applyFitScale();
   return root;
 }
 
@@ -232,6 +258,7 @@ function onDecline() {
 export function triggerPhoneCall() {
   if (visible) return;
   ensureRoot();
+  applyFitScale(); // re-measure — lang text length affects naturalH
   visible = true;
   // Next frame, so the initial transform/opacity above actually applies
   // first and the .open transition has something to animate from.

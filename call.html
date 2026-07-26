@@ -16,15 +16,29 @@
     font-weight: normal; font-style: normal; font-display: block;
   }
 
+  /* Fixed logical-resolution stage (mirrors src/core/Stage.js's own
+     LOGICAL_W x LOGICAL_H + Math.min(w/W, h/H) fit-scale for the main Pixi
+     canvas) — everything below is authored in this 1920x1080 box, and
+     resizeStage() (see script below) is the only thing that ever rescales
+     it. That keeps the cam window's proportions relative to the backdrop
+     identical on every screen size/aspect ratio instead of the old
+     vw/vh-only rules (which reacted to width and height independently and
+     let a short/narrow viewport clip or distort the fixed-px chrome). */
+  #call-stage {
+    position: fixed; left: 50%; top: 50%;
+    width: 1920px; height: 1080px;
+    transform-origin: center center;
+  }
+
   /* Backdrop GIF, sized down from a true full-bleed cover so the page's own
      Bg_stream_(1).png background frames it on every side instead of the art
-     bleeding to the viewport's own edges — object-fit:contain (not cover)
+     bleeding to the stage's own edges — object-fit:contain (not cover)
      so shrinking it never crops the art itself, just leaves more backdrop
-     showing around it. Anchored to bottom-center (not the viewport's true
+     showing around it. Anchored to bottom-center (not the stage's true
      middle) so it reads as standing on the background art instead of
      floating dead-center over it. */
   #call-bg {
-    position: fixed; left: 50%; bottom: 0;
+    position: absolute; left: 50%; bottom: 0;
     transform: translateX(-50%);
     width: 96%; height: 96%;
     object-fit: contain; object-position: center bottom;
@@ -33,10 +47,13 @@
   /* Small "front camera" window, top-left — plain rectangular hard edge
      (user-requested "外框取消像素效果 變回原本長方形硬邊": drop the pixel-
      notch corner treatment, back to a flat rect), same blue border color as
-     before. */
+     before. Positioned/sized in logical stage px now (was 4vw/4vh + a
+     min(38vw, 420px) cap) — 420px was the cap that actually applied at
+     everyday desktop widths anyway, so it's the same design size, just now
+     scaled as part of the whole stage instead of independently. */
   #cam-window {
-    position: fixed; left: 4vw; top: 4vh;
-    width: min(38vw, 420px);
+    position: absolute; left: 4%; top: 4%;
+    width: 420px;
     border: 3px solid #8fd0f2;
     overflow: hidden;
   }
@@ -108,27 +125,44 @@
 </style>
 </head>
 <body>
-<img id="call-bg" src="!amevanitysearchangry.gif" alt="">
+<div id="call-stage">
+  <img id="call-bg" src="!amevanitysearchangry.gif" alt="">
 
-<div id="cam-window">
-  <div id="cam-window-inner">
-    <div id="cam-titlebar">
-      <div class="ti"></div>
-      <div class="tb">
-        <div class="tb-btn"><div class="tb-sq"></div></div>
-        <div class="tb-btn"><div class="tb-sq"></div></div>
-        <div class="tb-btn tb-x"></div>
+  <div id="cam-window">
+    <div id="cam-window-inner">
+      <div id="cam-titlebar">
+        <div class="ti"></div>
+        <div class="tb">
+          <div class="tb-btn"><div class="tb-sq"></div></div>
+          <div class="tb-btn"><div class="tb-sq"></div></div>
+          <div class="tb-btn tb-x"></div>
+        </div>
       </div>
+      <div id="cam-content">
+        <video id="cam-video" autoplay muted playsinline></video>
+        <canvas id="cam-canvas"></canvas>
+        <div id="cam-fallback">無法取得前鏡頭畫面<br><small>Camera unavailable</small></div>
+      </div>
+      <div id="cam-statusbar"><span></span><span></span><span></span></div>
     </div>
-    <div id="cam-content">
-      <video id="cam-video" autoplay muted playsinline></video>
-      <canvas id="cam-canvas"></canvas>
-      <div id="cam-fallback">無法取得前鏡頭畫面<br><small>Camera unavailable</small></div>
-    </div>
-    <div id="cam-statusbar"><span></span><span></span><span></span></div>
   </div>
 </div>
 
+<script>
+  // Same fit pattern as src/core/Stage.js's resize(): uniform
+  // Math.min(w/W, h/H) scale, centered — keeps the whole call-stage box
+  // (backdrop + cam window together) proportional and fully on-screen at
+  // any viewport size/aspect ratio.
+  const STAGE_W = 1920, STAGE_H = 1080;
+  const stageEl = document.getElementById('call-stage');
+  function resizeStage() {
+    const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+    stageEl.style.transform = `translate(-50%, -50%) scale(${scale})`;
+  }
+  window.addEventListener('resize', resizeStage);
+  window.addEventListener('orientationchange', resizeStage);
+  resizeStage();
+</script>
 <script>
   const video = document.getElementById('cam-video');
   const content = document.getElementById('cam-content');
