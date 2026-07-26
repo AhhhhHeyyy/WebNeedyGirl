@@ -82,6 +82,18 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 }
 .loading-lang-btn.active { background: #b076c8; border-color: #b076c8; color: #fff; }
 
+/* Some Chromium-based mobile browsers (Edge/Samsung Internet) force-darken
+   web content even when the page opts out via color-scheme — a deliberate
+   browser-side override, not something fixable from here (see index.html's
+   <meta name="color-scheme">). This just tells affected users where to turn
+   it off on their end. Text/lang wired by main.js's wireDarkModeHint. */
+#dark-mode-hint {
+  max-width: 280px; margin-top: 2px;
+  font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  font-size: 11px; line-height: 1.5; letter-spacing: .02em;
+  color: #8a6fb0; opacity: .6; text-align: center;
+}
+
 /* #viewport-root splits the window into two side-by-side, non-overlapping
    flex regions: #stage-area (the actual composition) and #panel (the layer
    editor). This overrides shared/panel.css's #panel/#panel-toggle rules
@@ -185,6 +197,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
     <button type="button" class="loading-lang-btn" data-lang="ja">日本語</button>
     <button type="button" class="loading-lang-btn" data-lang="ko">한국어</button>
   </div>
+  <div id="dark-mode-hint"></div>
 </div>
 <div id="rotate-prompt">
   <div class="icon">📱</div>
