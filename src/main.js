@@ -71,10 +71,10 @@ wireRotatePrompt();
 // a deliberate browser-side override with no code-side fix (Chromium issue
 // 40116544). Shown on the loading screen only, same language pick as above.
 const DARK_MODE_HINT_TEXT = {
-  zh: '若畫面顏色看起來偏暗/變色，請至瀏覽器設定關閉「網頁內容強制深色」',
-  en: 'If colors look off or darkened, disable "Force dark web pages" in your browser settings',
-  ja: '色がおかしく見える／暗く見える場合は、ブラウザ設定で「ウェブページの強制ダークモード」をオフにしてください',
-  ko: '화면 색상이 이상하거나 어둡게 보이면 브라우저 설정에서 "웹페이지 강제 다크 모드"를 꺼주세요',
+  zh: '若畫面顏色看起來偏暗/變色，請關閉手機的夜間/深色模式',
+  en: 'If colors look off or darkened, turn off your phone’s night/dark mode',
+  ja: '色がおかしく見える／暗く見える場合は、スマートフォンの夜間/ダークモードをオフにしてください',
+  ko: '화면 색상이 이상하거나 어둡게 보이면 휴대폰의 야간/다크 모드를 꺼주세요',
 };
 function wireDarkModeHint() {
   const el = document.getElementById('dark-mode-hint');
