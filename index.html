@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Opts out of Android/Chrome's forced-dark auto-theming, which otherwise
+     repaints the whole page (including Pixi canvases/images) with a color-
+     inversion algorithm — an explicit background alone doesn't stop that. -->
+<meta name="color-scheme" content="light only">
 <title>NeedyGirl Layer Compositor</title>
 <script src="shared/device-perf.js"></script>
 <script src="shared/state-sync.js"></script>
@@ -12,8 +16,10 @@
 <script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
 <link rel="stylesheet" href="shared/panel.css">
 <style>
-/* Explicit white background — without it, browsers/OSes in dark/night mode
-   will invert or darken the unstyled page background before any layer paints. */
+/* color-scheme here backs up the <meta name="color-scheme"> tag above for
+   browsers that only honor the CSS form. Explicit white background so
+   nothing shows through before any layer paints. */
+:root { color-scheme: light; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; }
 
 @font-face {
