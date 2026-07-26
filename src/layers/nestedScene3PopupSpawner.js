@@ -38,6 +38,37 @@ import { BaseLottieLayer } from './BaseLottieLayer.js';
 export const popupTuning = { cx: 256, cy: 254, w: 440, h: 184, bgColor: '#3a0a0a' };
 const CANVAS_CENTER = 256; // BaseLottieLayer scales/rotates the div about its own center
 
+// Set by EffectDirector.js's setAngelSwap() on the Angel_A<->Angel_D edge.
+// While active, every pop-up's window content (the same cx/cy/w/h rect
+// cropCanvas renders into) gets a fully opaque #000295 layer on top instead
+// of its usual Angel peek, following the exact same open/close wipe
+// (applyCoverClip() below, mirroring cropCanvas's own clip-path) rather than
+// hard-cutting to fully shown/hidden. openPopups tracks every currently-alive
+// pop-up's {coverEl, win} pair so already-open windows react immediately too,
+// not just ones spawned after the toggle.
+let angelDCoverActive = false;
+const openPopups = new Set();
+
+// Shared by the per-frame handler below and by setAngelDCoverActive() itself
+// (for popups already open when the toggle flips) — same open/close wipe
+// curve as cropCanvas's own clip-path, so the cover animates in/out exactly
+// like the window's own reveal instead of hard-cutting to fully shown/hidden.
+function applyCoverClip(coverEl, active, progress) {
+  if (active && progress > 0) {
+    coverEl.style.display = 'block';
+    coverEl.style.clipPath = `inset(0 ${(1 - progress) * 50}% 0 ${(1 - progress) * 50}%)`;
+  } else {
+    coverEl.style.display = 'none';
+  }
+}
+
+export function setAngelDCoverActive(active) {
+  angelDCoverActive = active;
+  openPopups.forEach(({ coverEl, win }) => {
+    applyCoverClip(coverEl, active, popupOpenProgress(win.getCurrentFrame()));
+  });
+}
+
 // Nested Scene 9's own scale keyframes (see UI/Dark/Nested Scene 3.json —
 // Nested Scene 9's "s" property: t=5 s=[0,100] o={.55,.06} i={.36,1}, t=16
 // s=[100,100], t=66 s=[100,100] o={.65,0} i={1,1}, t=82 s=[0,100]), over a
@@ -265,6 +296,22 @@ export async function spawnNestedScene3Popup(x, y, { stage, manager, lottieConta
   });
   win.el.appendChild(cropCanvas);
 
+  // Same rect as cropCanvas, stacked directly above it (later in DOM order)
+  // so it fully occludes the Angel peek whenever angelDCoverActive is on.
+  const coverEl = document.createElement('div');
+  Object.assign(coverEl.style, {
+    position: 'absolute',
+    left: `${popupTuning.cx - popupTuning.w / 2}px`,
+    top: `${popupTuning.cy - popupTuning.h / 2}px`,
+    width: `${popupTuning.w}px`,
+    height: `${popupTuning.h}px`,
+    background: '#000295',
+    display: 'none',
+  });
+  win.el.appendChild(coverEl);
+  const popupRef = { coverEl, win };
+  openPopups.add(popupRef);
+
   const tick = () => {
     miniRenderer.background.color = parseInt(popupTuning.bgColor.slice(1), 16);
     if (refTrack && spine.state.tracks[0]) {
@@ -298,13 +345,15 @@ export async function spawnNestedScene3Popup(x, y, { stage, manager, lottieConta
     } else {
       cropCanvas.style.display = 'none';
     }
+    applyCoverClip(coverEl, angelDCoverActive, progress);
   });
 
   const offComplete = win.onComplete(() => {
     offFrame();
     offComplete();
     stage.app.ticker.remove(tick);
-    win.destroy(); // also removes cropCanvas, since it's a child of win.el
+    openPopups.delete(popupRef);
+    win.destroy(); // also removes cropCanvas/coverEl, both children of win.el
     releaseRenderer(miniRenderer); // back to the pool, not destroyed — see acquireRenderer()
     viewContainer.destroy({ children: true }); // also destroys `spine`
   });

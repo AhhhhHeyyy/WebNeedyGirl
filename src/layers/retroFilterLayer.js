@@ -36,7 +36,7 @@ export class RetroFilterLayer extends BaseIframeLayer {
     Object.assign(this.toggleBtn.style, {
       position: 'absolute', top: '58px', right: '14px', zIndex: String(FRONTMOST_Z + 1),
       width: '34px', height: '34px', borderRadius: '50%', border: 'none',
-      background: 'rgba(255,255,255,0.72)', cursor: 'pointer', fontSize: '15px',
+      background: 'rgba(255,255,255,0.72)', cursor: 'none', fontSize: '15px', // decorative pixel-cursor is the only cursor meant to show over #stage-area — see DragTransform.js
     });
     this.toggleBtn.onclick = () => {
       this._panelOpen = !this._panelOpen;

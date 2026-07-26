@@ -3,7 +3,8 @@
     {
       "id": "frame1",
       "label": "Frame 1",
-      "file": "Frame 1.png"
+      "file": "Frame 1.png",
+      "module": "layers/frame1Layer.js"
     },
     {
       "id": "frame1B",
@@ -171,6 +172,12 @@
           "label": "3 line",
           "file": "3 line.png",
           "module": "layers/live.3LineLayer.js"
+        },
+        {
+          "id": "live.liveIcon",
+          "label": "Live icon",
+          "file": "live icon.png",
+          "module": "layers/live.liveIconLayer.js"
         },
         {
           "id": "live.searchBar",

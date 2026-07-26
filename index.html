@@ -12,7 +12,9 @@
 <script src="https://cdn.jsdelivr.net/npm/lottie-web@5.12.2/build/player/lottie.min.js"></script>
 <link rel="stylesheet" href="shared/panel.css">
 <style>
-html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
+/* Explicit white background — without it, browsers/OSes in dark/night mode
+   will invert or darken the unstyled page background before any layer paints. */
+html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #fff; }
 
 @font-face {
   font-family: 'Silver';
@@ -56,13 +58,31 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
   font-size: 30px; letter-spacing: .04em; color: #7060a0;
 }
 
+/* The one deliberate language-choice point (see src/core/DialogueStore.js's
+   detectBrowserLang) — pick here while the scene is still loading, or leave
+   it alone and the browser's own reported language applies. Wired up by
+   main.js's wireLoadingLangPicker (module-scope, so it's interactive the
+   instant the module loads, independent of boot()'s asset Promise.all). */
+#loading-lang-picker {
+  display: flex; gap: 10px; margin-top: 4px;
+}
+.loading-lang-btn {
+  font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  font-size: 14px; letter-spacing: .04em; line-height: 1;
+  padding: 8px 16px; border-radius: 999px;
+  border: 1px solid rgba(160,128,205,0.35);
+  background: rgba(255,255,255,0.5); color: #8a6fb0;
+  cursor: pointer; transition: background .15s ease, color .15s ease, border-color .15s ease;
+}
+.loading-lang-btn.active { background: #b076c8; border-color: #b076c8; color: #fff; }
+
 /* #viewport-root splits the window into two side-by-side, non-overlapping
    flex regions: #stage-area (the actual composition) and #panel (the layer
    editor). This overrides shared/panel.css's #panel/#panel-toggle rules
    (fixed-overlay, meant for a self-contained effect's OWN internal panel)
    just for this composition root — the panel here docks as a real sidebar
    instead of floating on top of the canvas.
-   Every effect/layer context stacks absolute within #stage-area; z-index
+   Every effect/layer context stacks absolute within #stage-world; z-index
    between them is coordinated at runtime by src/main.js (see reconcileZIndex). */
 #viewport-root { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: flex; }
 /* cursor:none here (not on <body>) is the one bit of global coordination the
@@ -73,7 +93,22 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
    DragTransform.js) can still set their own inline cursor to override this,
    which is desired: functional feedback wins over the decorative cursor. */
 #stage-area { position: relative; flex: 1 1 auto; min-width: 0; height: 100%; overflow: hidden; cursor: none; }
-#bg-effect-layer, #pixi-stage, #lottie-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+/* #stage-world is the "camera" that screenShake.js actually moves — #stage-area
+   above stays a fixed mask/viewport (overflow:hidden, never transformed), so a
+   shake reads as the view into the scene moving, not the window itself
+   wobbling (no seam ever opens against #panel or the browser edge). Every
+   effect/layer context (Pixi canvas, DOM effect iframes, lottie, the chat/
+   yandere-proto DOM overlays) lives inside this wrapper; #panel-toggle below
+   is the one thing deliberately left a direct child of #stage-area instead —
+   dev UI, excluded from shaking same as #panel itself.
+   will-change is set here permanently (not toggled per-shake) rather than in
+   screenShake.js — this subtree is heavy (Pixi's WebGL canvas plus several
+   more WebGL iframes each running their own draw loop), so promoting/
+   demoting its own compositing layer just-in-time for every single shake was
+   itself the expensive part; paying a small constant amount of idle GPU
+   memory for the life of the page avoids that. */
+#stage-world, #bg-effect-layer, #pixi-stage, #lottie-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+#stage-world { will-change: transform; }
 #lottie-layer { pointer-events: none; }
 
 #panel-toggle { position: absolute; top: 14px; right: 14px; }
@@ -124,7 +159,6 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 }
 #rotate-prompt .icon { font-size: 56px; animation: rotate-hint 1.6s ease-in-out infinite; }
 #rotate-prompt .msg { font-size: 15px; line-height: 1.7; }
-#rotate-prompt .msg small { display: block; font-size: 11.5px; opacity: .65; margin-top: 4px; }
 @keyframes rotate-hint {
   0%, 100% { transform: rotate(0deg); }
   50% { transform: rotate(90deg); }
@@ -139,16 +173,24 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; }
   <div id="loading-spinner"></div>
   <div id="loading-label">LOADING</div>
   <div id="loading-percent">0%</div>
+  <div id="loading-lang-picker">
+    <button type="button" class="loading-lang-btn" data-lang="zh">中文</button>
+    <button type="button" class="loading-lang-btn" data-lang="en">EN</button>
+    <button type="button" class="loading-lang-btn" data-lang="ja">日本語</button>
+    <button type="button" class="loading-lang-btn" data-lang="ko">한국어</button>
+  </div>
 </div>
 <div id="rotate-prompt">
   <div class="icon">📱</div>
-  <div class="msg">請將裝置轉為橫向以獲得最佳體驗<small>Please rotate your device to landscape</small></div>
+  <div class="msg" id="rotate-prompt-msg">請將裝置轉為橫向以獲得最佳體驗</div>
 </div>
 <div id="viewport-root">
   <div id="stage-area">
-    <div id="bg-effect-layer"></div>   <!-- self-contained effect pages, e.g. UI/holographic -->
-    <div id="pixi-stage"></div>        <!-- Pixi.js image layers -->
-    <div id="lottie-layer"></div>      <!-- lottie-web layer -->
+    <div id="stage-world">
+      <div id="bg-effect-layer"></div>   <!-- self-contained effect pages, e.g. UI/holographic -->
+      <div id="pixi-stage"></div>        <!-- Pixi.js image layers -->
+      <div id="lottie-layer"></div>      <!-- lottie-web layer -->
+    </div>
     <button id="panel-toggle" title="Layers">⚙</button>
   </div>
 

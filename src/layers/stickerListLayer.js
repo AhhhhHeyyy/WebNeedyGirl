@@ -1,4 +1,6 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
+import { StatStore } from '../core/StatStore.js';
+import { triggerPhoneCall } from './phoneCallOverlay.js';
 
 // Renders the 5 clickable sticker icons on top of the "listStickers" board
 // (UI/list-stickers.png, see listStickersLayer.js) plus their click-to-spawn
@@ -88,6 +90,79 @@ const MOBILE_ICON_SCALE = 1.5;
 const LONG_PRESS_MS = 450;
 const LONG_PRESS_MOVE_CANCEL_PX = 12;
 
+// Sitting in the phone icon's (index 3, see STICKER_DELTAS below) '.hovering'
+// pose — a real mouse hover, or touch's own hold-to-hover above — for this
+// long opens phoneCallOverlay.js's incoming-call modal instead of requiring
+// any click. Started/stopped from _setHovered() itself, so it always tracks
+// the exact same hover state the '.hovering' CSS pose does: mousing off the
+// icon (or a touch hold letting go before _startTouchHoldHover even applies
+// the pose) cancels it, no separate drift-tracking needed here.
+const CALL_HOVER_MS = 3000;
+const PHONE_INDEX = 3;
+
+// index -> StatStore delta (system/NeedyGirl-簡化版-工程實作規格.md §8-1).
+// UI/stickerList/script.js's STICKERS array is purely positional (sticker1..5
+// .png, no named identity anywhere in code) — this mapping was resolved by
+// visually matching each PNG to the spec's named rows: 0 pill blister pack
+// (精神藥物), 1 heart (愛心), 2 pink cat mascot (P君), 3 phone (手機), 4
+// wrapped candy (毒品糖果). Phone's stress:+10 and heart's across-the-board
+// -6 (in place of the spec's own affection:+6) are user-requested changes,
+// not from the spec doc.
+const STICKER_DELTAS = [
+  { stress: -12, darkness: 6 },
+  { affection: -6, stress: -6, darkness: -6 },
+  { affection: 8, stress: -4 },
+  { followers: 800, stress: 10 },
+  { stress: -20, darkness: 14 },
+];
+const PILL_INDEX = 0;
+const CANDY_INDEX = 4;
+
+// 刷屏遞減 (§8-1): same icon's 5th+ click within a rolling 10s window gets
+// its delta scaled down, so mashing one icon can't spam a stat to its cap.
+const CLICK_DECAY_WINDOW_MS = 10_000;
+const CLICK_DECAY_THRESHOLD = 5;
+const CLICK_DECAY_MULTIPLIER = 0.3;
+
+// OD 組合 (§8-1): pill then candy (or reverse) within 3s fires a combo
+// delta instead of the second click's own base delta. Module-scope state
+// (mirrors EffectDirector.js's windowBreakOn precedent for "one small
+// persistent value bag" — there's only ever one StickerListLayer instance).
+const OD_COMBO_WINDOW_MS = 3_000;
+const clickTimestamps = [[], [], [], [], []]; // per-index rolling window, performance.now()
+let lastPillClickTs = -Infinity;
+let lastCandyClickTs = -Infinity;
+
+function registerStickerClick(index) {
+  const now = performance.now();
+  const bucket = clickTimestamps[index];
+  while (bucket.length && now - bucket[0] > CLICK_DECAY_WINDOW_MS) bucket.shift();
+  bucket.push(now);
+
+  // Combo check first — short-circuits the base delta below entirely.
+  if (index === PILL_INDEX && now - lastCandyClickTs <= OD_COMBO_WINDOW_MS) {
+    lastCandyClickTs = -Infinity; // consumed, so a third click can't re-pair with it
+    lastPillClickTs = now;
+    StatStore.announce({ stress: -StatStore.get('stress'), darkness: 25 });
+    return;
+  }
+  if (index === CANDY_INDEX && now - lastPillClickTs <= OD_COMBO_WINDOW_MS) {
+    lastPillClickTs = -Infinity;
+    lastCandyClickTs = now;
+    StatStore.announce({ stress: -StatStore.get('stress'), darkness: 25 });
+    return;
+  }
+  if (index === PILL_INDEX) lastPillClickTs = now;
+  if (index === CANDY_INDEX) lastCandyClickTs = now;
+
+  const base = STICKER_DELTAS[index];
+  if (!base) return;
+  const scale = bucket.length >= CLICK_DECAY_THRESHOLD ? CLICK_DECAY_MULTIPLIER : 1;
+  const delta = {};
+  Object.entries(base).forEach(([key, v]) => { delta[key] = v * scale; });
+  StatStore.announce(delta);
+}
+
 export class StickerListLayer extends BaseIframeLayer {
   constructor(opts) {
     super(opts);
@@ -115,7 +190,14 @@ export class StickerListLayer extends BaseIframeLayer {
     this._onWindowClick = (e) => {
       if (!this.visible) return;
       const i = this._indexAt(e.clientX, e.clientY);
-      if (i !== -1) this._postClick(i);
+      if (i === -1) return;
+      // A completed call-long-press still ends in a normal 'click' once the
+      // pointer lifts (the browser fires one regardless of hold duration, as
+      // long as it didn't drift) — swallow just that one so the phone icon
+      // doesn't also spawn its falling clone / apply its stat delta right on
+      // top of the call modal opening.
+      if (this._suppressNextClickIndex === i) { this._suppressNextClickIndex = -1; return; }
+      this._postClick(i);
     };
     // Capture phase, on window (ahead of the canvas in the propagation
     // path) — a mousedown/tap on a sticker icon still lands on the Pixi
@@ -131,15 +213,29 @@ export class StickerListLayer extends BaseIframeLayer {
       const i = this._indexAt(e.clientX, e.clientY);
       if (i !== -1) e.stopPropagation();
       if (e.pointerType !== 'mouse') this._startTouchHoldHover(i, e);
+      // User-requested: clicking the phone icon shouldn't itself count toward
+      // the call-hover seconds — only touch-free hovering does. Mouse-only:
+      // touch has no independent hover state to protect (its own hold-to-
+      // hover gesture IS the press, see _startTouchHoldHover), so pausing on
+      // every touch pointerdown would make the timer unreachable there.
+      if (i === PHONE_INDEX && e.pointerType === 'mouse') this._pauseCallHoverTimer();
+    };
+    this._onWindowPointerUp = () => {
+      if (this._hoveredIndex === PHONE_INDEX) this._resumeCallHoverTimer();
     };
     // Touch-only long-press-to-hover bookkeeping (see _startTouchHoldHover).
     this._pressTimer = null;
     this._pressCleanup = null;
     this._touchHoverActive = false;
     this._onTouchHoldRelease = () => this._cancelTouchHoldHover();
+    // Phone-icon call-hover bookkeeping (see _startCallHoverTimer, driven
+    // from _setHovered()).
+    this._callHoverTimer = null;
+    this._suppressNextClickIndex = -1;
     window.addEventListener('pointermove', this._onWindowPointerMove);
     window.addEventListener('click', this._onWindowClick);
     window.addEventListener('pointerdown', this._onWindowPointerDown, true);
+    window.addEventListener('pointerup', this._onWindowPointerUp);
 
     this._onMessage = (e) => {
       if (e.origin !== window.location.origin || e.source !== this.el.contentWindow) return;
@@ -199,14 +295,61 @@ export class StickerListLayer extends BaseIframeLayer {
   }
 
   _postClick(index) {
+    registerStickerClick(index);
     this.el.contentWindow?.postMessage({ type: 'ng-stickerlist-click', index }, window.location.origin);
   }
 
   _setHovered(index) {
     if (index === this._hoveredIndex) return;
     if (this._hoveredIndex !== -1) this._postHover(this._hoveredIndex, false);
+    this._cancelCallHoverTimer();
     this._hoveredIndex = index;
-    if (index !== -1) this._postHover(index, true);
+    if (index !== -1) {
+      this._postHover(index, true);
+      if (index === PHONE_INDEX) this._startCallHoverTimer(index);
+    }
+  }
+
+  // Runs while the phone icon sits in its '.hovering' pose (real mouse hover,
+  // or touch's own hold-to-hover) — fires phoneCallOverlay.js's incoming-call
+  // modal once that pose has held continuously, with no click at all (see
+  // _pauseCallHoverTimer), for a full CALL_HOVER_MS. Always started/stopped
+  // in lockstep with _setHovered() itself, so there's nothing separate to
+  // cancel on mouse-out/touch-release/layer-hide — whatever un-hovers the
+  // icon already routes back through _setHovered.
+  _startCallHoverTimer(index) {
+    this._callHoverTimer = setTimeout(() => this._fireCallHover(index), CALL_HOVER_MS);
+  }
+
+  // Un-hovering entirely (moved off the icon, touch released, layer hidden)
+  // drops all progress — only a single unbroken, click-free hover run
+  // counts, resuming later starts the CALL_HOVER_MS count over from zero.
+  _cancelCallHoverTimer() {
+    if (this._callHoverTimer) { clearTimeout(this._callHoverTimer); this._callHoverTimer = null; }
+  }
+
+  // User-requested: "只要複製體有出來(有點擊sticker) 就要停止計算hover" — a
+  // mouse-button-down on the phone icon must fully restart the count, not
+  // just bank-and-pause it. An earlier version banked the elapsed time so
+  // far and resumed from there on release — but that let a rapid run of
+  // repeated clicks still creep past CALL_HOVER_MS via the small hover gaps
+  // between each release and the next press, quietly summing to 3s and
+  // firing the call despite the user visibly just mashing the icon. Fully
+  // restarting on every click closes that: only one truly unbroken,
+  // click-free CALL_HOVER_MS hover can ever fire it.
+  _pauseCallHoverTimer() {
+    this._cancelCallHoverTimer();
+  }
+
+  _resumeCallHoverTimer() {
+    if (this._callHoverTimer || this._hoveredIndex !== PHONE_INDEX) return;
+    this._startCallHoverTimer(PHONE_INDEX);
+  }
+
+  _fireCallHover(index) {
+    this._callHoverTimer = null;
+    this._suppressNextClickIndex = index;
+    triggerPhoneCall();
   }
 
   // Fired from _onWindowPointerDown for any non-mouse pointer landing on an
@@ -478,12 +621,14 @@ export class StickerListLayer extends BaseIframeLayer {
 
   destroy() {
     this._cancelTouchHoldHover();
+    this._cancelCallHoverTimer();
     this._offManagerChange();
     this._offResize();
     this.stage.app.ticker.remove(this._tick);
     window.removeEventListener('pointermove', this._onWindowPointerMove);
     window.removeEventListener('click', this._onWindowClick);
     window.removeEventListener('pointerdown', this._onWindowPointerDown, true);
+    window.removeEventListener('pointerup', this._onWindowPointerUp);
     window.removeEventListener('message', this._onMessage);
     super.destroy();
   }

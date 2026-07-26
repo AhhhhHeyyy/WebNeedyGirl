@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Ame-chan Calling</title>
+<style>
+  html, body {
+    margin: 0; width: 100%; height: 100%; overflow: hidden;
+    background: #16141f url('Bg_stream_(1).png') no-repeat center center / cover;
+    font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  @font-face {
+    font-family: 'Silver';
+    src: url('font/Silver.ttf') format('truetype');
+    font-weight: normal; font-style: normal; font-display: block;
+  }
+
+  /* Backdrop GIF, sized down from a true full-bleed cover so the page's own
+     Bg_stream_(1).png background frames it on every side instead of the art
+     bleeding to the viewport's own edges — object-fit:contain (not cover)
+     so shrinking it never crops the art itself, just leaves more backdrop
+     showing around it. Anchored to bottom-center (not the viewport's true
+     middle) so it reads as standing on the background art instead of
+     floating dead-center over it. */
+  #call-bg {
+    position: fixed; left: 50%; bottom: 0;
+    transform: translateX(-50%);
+    width: 96%; height: 96%;
+    object-fit: contain; object-position: center bottom;
+  }
+
+  /* Small "front camera" window, top-left — plain rectangular hard edge
+     (user-requested "外框取消像素效果 變回原本長方形硬邊": drop the pixel-
+     notch corner treatment, back to a flat rect), same blue border color as
+     before. */
+  #cam-window {
+    position: fixed; left: 4vw; top: 4vh;
+    width: min(38vw, 420px);
+    border: 3px solid #8fd0f2;
+    overflow: hidden;
+  }
+  #cam-window-inner {
+    background: #fff;
+  }
+  #cam-titlebar {
+    height: 26px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 7px;
+    background: linear-gradient(90deg, #d8f0ff 0%, #f6cdf0 50%, #d8f0ff 100%);
+    border-bottom: 2px solid #8fd0f2;
+  }
+  #cam-titlebar .ti { width: 12px; height: 12px; border-radius: 2px; background: #4a3f95; }
+  #cam-titlebar .tb { display: flex; gap: 4px; }
+  #cam-titlebar .tb-btn {
+    width: 14px; height: 14px; border-radius: 2px;
+    background: rgba(255,255,255,0.65); border: 1px solid #6a5fae;
+    position: relative;
+  }
+  #cam-titlebar .tb-sq { position: absolute; inset: 3px; border: 1.2px solid #5a4a9e; }
+  #cam-titlebar .tb-x::before, #cam-titlebar .tb-x::after {
+    content: ''; position: absolute; width: 8px; height: 1.3px; background: #5a4a9e; top: 50%; left: 50%;
+  }
+  #cam-titlebar .tb-x::before { transform: translate(-50%, -50%) rotate(45deg); }
+  #cam-titlebar .tb-x::after { transform: translate(-50%, -50%) rotate(-45deg); }
+
+  /* 16:9 — a real browser tab/page's own landscape proportions, not the
+     squarish 4:3 an old-style webcam window would use (user-requested: "更
+     偏向長方形...依照真實分頁的比例"). */
+  #cam-content {
+    position: relative; width: 100%; aspect-ratio: 16 / 9;
+    background: #fff; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Invisible — only ever used as drawImage()'s source (see the pixel-art
+     re-render loop below); the visible feed is #cam-canvas instead.
+     display:none (an earlier version of this rule) stalls frame decode for
+     a <video> in some browsers since it's never actually composited; opacity
+     keeps it "on screen" (zero-size, non-interactive) so decode keeps
+     running while nothing of the real feed is ever visibly shown. */
+  #cam-video {
+    position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+  }
+  #cam-canvas {
+    width: 100%; height: 100%; display: block;
+    /* Keeps the canvas's own already-blocky pixels crisp when the browser
+       scales its fixed internal resolution up to the box's CSS size, instead
+       of blurring the block edges back into a smooth gradient. */
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+    image-rendering: crisp-edges;
+  }
+  #cam-content.no-video #cam-canvas { display: none; }
+  #cam-fallback {
+    position: absolute; inset: 0; display: none;
+    align-items: center; justify-content: center; text-align: center;
+    padding: 10px; box-sizing: border-box;
+    font-size: 12px; line-height: 1.6; color: #8a6fb0;
+  }
+  #cam-content.no-video #cam-fallback { display: flex; }
+
+  #cam-statusbar {
+    height: 11px;
+    background: linear-gradient(90deg, #d8f0ff 0%, #f6cdf0 50%, #d8f0ff 100%);
+    border-top: 2px solid #8fd0f2;
+    display: flex; align-items: center; gap: 3px; padding: 0 7px;
+  }
+  #cam-statusbar span { width: 5px; height: 5px; background: #7a5fae; opacity: .6; }
+</style>
+</head>
+<body>
+<img id="call-bg" src="!amevanitysearchangry.gif" alt="">
+
+<div id="cam-window">
+  <div id="cam-window-inner">
+    <div id="cam-titlebar">
+      <div class="ti"></div>
+      <div class="tb">
+        <div class="tb-btn"><div class="tb-sq"></div></div>
+        <div class="tb-btn"><div class="tb-sq"></div></div>
+        <div class="tb-btn tb-x"></div>
+      </div>
+    </div>
+    <div id="cam-content">
+      <video id="cam-video" autoplay muted playsinline></video>
+      <canvas id="cam-canvas"></canvas>
+      <div id="cam-fallback">無法取得前鏡頭畫面<br><small>Camera unavailable</small></div>
+    </div>
+    <div id="cam-statusbar"><span></span><span></span><span></span></div>
+  </div>
+</div>
+
+<script>
+  const video = document.getElementById('cam-video');
+  const content = document.getElementById('cam-content');
+  const canvas = document.getElementById('cam-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Fixed 16:9 internal resolution — matches #cam-content's own aspect-ratio
+  // (see CSS) regardless of the real camera's native resolution, so
+  // drawFrame()'s cover-crop math below always has a stable target rect.
+  canvas.width = 640;
+  canvas.height = 360;
+
+  // Pixel-art re-render, user-requested: "像素風格的濾鏡 顏色二值化(白色跟粉色)"
+  // — every real frame is first downsampled onto a tiny offscreen canvas
+  // (that resize IS the pixelation: each resulting pixel is really an
+  // average of a whole block of the real frame), then each of those tiny
+  // pixels is thresholded to pure white or pink (the "二值化"/binarize part),
+  // then the tiny canvas is blown back up onto the visible one with
+  // smoothing off so the upscale reads as hard blocks instead of a blur —
+  // same "whole person built out of pixels" look the game's own sticker art
+  // already has, just applied live to the camera feed.
+  const PIXEL_COLS = 160; // finer/smaller pixel blocks — user-requested "像素還要更細"
+  const PIXEL_ROWS = Math.round(PIXEL_COLS * 9 / 16);
+  const small = document.createElement('canvas');
+  small.width = PIXEL_COLS;
+  small.height = PIXEL_ROWS;
+  const smallCtx = small.getContext('2d', { willReadFrequently: true });
+
+  // "White" is barely pink, not pure white — user-requested "白色用淺粉色替代
+  // (一點點淺粉色即可)": just a light pink tint, not the fully-saturated PINK
+  // below (that one's still the "dark" side of the threshold).
+  const WHITE = [255, 245, 250];
+  const PINK = [239, 110, 189];
+  const LUMA_THRESHOLD = 130;
+
+  function drawFrame() {
+    requestAnimationFrame(drawFrame);
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    // Crop the source to the small canvas's own aspect ratio first (the same
+    // math CSS object-fit:cover does), so a camera that isn't natively 16:9
+    // still fills the frame instead of being squashed into it.
+    const targetAR = PIXEL_COLS / PIXEL_ROWS;
+    const srcAR = vw / vh;
+    let sx = 0, sy = 0, sw = vw, sh = vh;
+    if (srcAR > targetAR) { sw = vh * targetAR; sx = (vw - sw) / 2; }
+    else { sh = vw / targetAR; sy = (vh - sh) / 2; }
+
+    smallCtx.drawImage(video, sx, sy, sw, sh, 0, 0, PIXEL_COLS, PIXEL_ROWS);
+    const frame = smallCtx.getImageData(0, 0, PIXEL_COLS, PIXEL_ROWS);
+    const d = frame.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const luma = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      const c = luma > LUMA_THRESHOLD ? WHITE : PINK;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+    }
+    smallCtx.putImageData(frame, 0, 0);
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1); // mirrored, like a selfie preview
+    ctx.drawImage(small, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+  }
+
+  navigator.mediaDevices?.getUserMedia?.({ video: { facingMode: 'user' }, audio: false })
+    .then((stream) => {
+      video.srcObject = stream;
+      requestAnimationFrame(drawFrame);
+    })
+    .catch(() => { content.classList.add('no-video'); });
+  if (!navigator.mediaDevices?.getUserMedia) content.classList.add('no-video');
+</script>
+</body>
+</html>

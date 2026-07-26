@@ -4,11 +4,12 @@ import { DragTransform } from '../core/DragTransform.js';
 // display object), analogous to BaseImageLayer for plain sprites/GIFs.
 // One skeleton+atlas can back multiple layers that each select a different
 // skin at creation time (see spineAngelASpineLayer.js / spineAngelDSpineLayer.js,
-// both loading UI/spineAngel/skeleton.json but picking "Angel" vs "dark") —
-// the skin never changes after creation, so there's no setSkinByName wiring
-// exposed here.
+// both loading UI/spineAngel/skeleton.json but picking "Angel" vs "dark").
+// The initial skin is just the starting pose though — see setSkin() below
+// for switching it afterwards (EffectDirector's stat-driven Stress/Yami
+// swap).
 export class BaseSpineLayer {
-  constructor({ id, label, spine, stage, x, y, scale = 1, rotation = 0 }) {
+  constructor({ id, label, spine, stage, x, y, scale = 1, rotation = 0, skin = null }) {
     this.id = id;
     this.label = label;
     this.type = 'spine';
@@ -16,6 +17,7 @@ export class BaseSpineLayer {
     this.visible = true;
     this.locked = false;
     this._paused = false;
+    this._skin = skin;
 
     // Kept as `sprite` (not `spine`) so DragTransform and the Frame1-clip
     // mask helper — both written against BaseImageLayer's sprite-shaped
@@ -43,7 +45,17 @@ export class BaseSpineLayer {
     if (spine.state.data.skeletonData.findAnimation(animation)) {
       spine.state.setAnimation(0, animation, true);
     }
-    return new BaseSpineLayer({ id, label, spine, stage, x, y, scale, rotation });
+    return new BaseSpineLayer({ id, label, spine, stage, x, y, scale, rotation, skin });
+  }
+
+  // Re-skins the already-loaded skeleton in place (e.g. Angel -> Angel_Yami)
+  // rather than recreating the Spine instance, so the current animation/
+  // track time keeps running uninterrupted through the swap.
+  setSkin(name) {
+    if (this._skin === name) return;
+    this._skin = name;
+    this.sprite.skeleton.setSkinByName(name);
+    this.sprite.skeleton.setSlotsToSetupPose();
   }
 
   setVisible(visible) {

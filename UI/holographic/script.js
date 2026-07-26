@@ -306,10 +306,6 @@ function vecToHex(v){
   const h=(x)=>Math.round(clamp01(x)*255).toString(16).padStart(2,'0');
   return `#${h(v[0])}${h(v[1])}${h(v[2])}`;
 }
-function lerpHex(hexA,hexB,t){
-  const a=hexToVec3(hexA), b=hexToVec3(hexB);
-  return vecToHex([lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)]);
-}
 
 /* ── Slider builder ── bound to whichever profile is currently selected for
    editing (previewMode, see refreshModeFields() below) rather than one
@@ -528,6 +524,23 @@ const hint=document.getElementById('hint'); let idleT;
 function wake(){ hint.classList.remove('hidden'); clearTimeout(idleT); idleT=setTimeout(()=>hint.classList.add('hidden'),3200); }
 ['mousemove','touchstart','keydown'].forEach(ev=>addEventListener(ev,wake)); wake();
 
+/* ── Mode-switch crossfade ── EffectDirector's ng-holo-mode flips activeMode
+   the instant a stat crosses its threshold (see holoMode() there) — without
+   this, the fully-blended target below would pop from one look to another
+   in a single frame (both the mode identity AND the intensity it's blended
+   at can jump together right at the threshold). Snapshot whatever was
+   actually on screen the frame before a mode change and crossfade FROM that
+   TOWARD the new (possibly still-moving, e.g. intensity keeps changing as
+   stats do) target over MODE_TRANSITION_MS, instead of only in the instant
+   the identity itself changes. Once the crossfade finishes it's a no-op —
+   rendering just tracks the target directly, same as before this existed. */
+const MODE_TRANSITION_MS=700;
+let lastRenderedMode=null; // activeMode as of the previous frame, to detect a change
+let transitionFrom=null;   // snapshot of the fully-blended target from the frame before the change
+let transitionStart=0;
+let lastDisplayed=null;    // whatever was actually shown last frame (crossfaded or not)
+function easeInOutCubic(t){ return t<0.5 ? 4*t*t*t : 1-Math.pow(-2*t+2,3)/2; }
+
 /* ── Render loop ── */
 const start=performance.now();
 let rafId=null;
@@ -559,53 +572,82 @@ function frame(now){
   const base=PROFILES.normal, mode=PROFILES[activeMode]||base;
   const t=activeIntensity;
 
-  const effSpeed=lerp(base.speed,mode.speed,t);
-  const effSteps=lerp(base.steps,mode.steps,t);
-  const effRing=lerp(base.ring_density,mode.ring_density,t);
-  const effWarp=lerp(base.warp,mode.warp,t);
-  const effDriftAmp=lerp(base.drift_amp,mode.drift_amp,t);
-  const effDriftSpeed=lerp(base.drift_speed,mode.drift_speed,t);
-  const effHue=lerp(base.hue,mode.hue,t);
-  const effVignette=lerp(base.vignette,mode.vignette,t);
-  const effSparkleSize=lerp(base.sparkle_size,mode.sparkle_size,t);
-  const effSparkleRate=lerp(base.sparkle_rate,mode.sparkle_rate,t);
-  const effSparkle=lerp(base.sparkle,mode.sparkle,t); // both are 0/1 -- lerp naturally snaps at t=0.5 since the shader just checks >0.5
-  const effNumCenters=lerp(base.num_centers,mode.num_centers,t);
   const [br,bg,bb]=hexToVec3(base.vortexHex), [mr,mg,mb]=hexToVec3(mode.vortexHex);
-  const effPr=lerp(br,mr,t), effPg=lerp(bg,mg,t), effPb=lerp(bb,mb,t);
+  const [rbr,rbg,rbb]=hexToVec3(base.retro.hex), [rmr,rmg,rmb]=hexToVec3(mode.retro.hex);
+  const [cbr,cbg,cbb]=hexToVec3(base.cf.hex), [cmr,cmg,cmb]=hexToVec3(mode.cf.hex);
+
+  // Every uniform/overlay value the shader+DOM actually consume, still
+  // computed exactly as before — this is the "instant" target the mode+
+  // intensity signal points at right now. What differs is what gets fed
+  // into gl.uniform*/style below: not `target` directly, but a crossfaded
+  // value chasing it (see the mode-change handling right after).
+  const target={
+    speed:lerp(base.speed,mode.speed,t),
+    steps:lerp(base.steps,mode.steps,t),
+    ring:lerp(base.ring_density,mode.ring_density,t),
+    warp:lerp(base.warp,mode.warp,t),
+    driftAmp:lerp(base.drift_amp,mode.drift_amp,t),
+    driftSpeed:lerp(base.drift_speed,mode.drift_speed,t),
+    hue:lerp(base.hue,mode.hue,t),
+    vignette:lerp(base.vignette,mode.vignette,t),
+    sparkleSize:lerp(base.sparkle_size,mode.sparkle_size,t),
+    sparkleRate:lerp(base.sparkle_rate,mode.sparkle_rate,t),
+    sparkle:lerp(base.sparkle,mode.sparkle,t), // both are 0/1 -- lerp naturally snaps at t=0.5 since the shader just checks >0.5
+    numCenters:lerp(base.num_centers,mode.num_centers,t),
+    pr:lerp(br,mr,t), pg:lerp(bg,mg,t), pb:lerp(bb,mb,t),
+    retroOpa:lerp(base.retro.off?0:base.retro.opa, mode.retro.off?0:mode.retro.opa, t),
+    retroR:lerp(rbr,rmr,t), retroG:lerp(rbg,rmg,t), retroB:lerp(rbb,rmb,t),
+    cfOpa:lerp(base.cf.off?0:base.cf.opa, mode.cf.off?0:mode.cf.opa, t),
+    cfR:lerp(cbr,cmr,t), cfG:lerp(cbg,cmg,t), cfB:lerp(cbb,cmb,t),
+  };
+
+  // Mode identity changed since last frame (a real stat-driven flip, or the
+  // panel's preview dropdown) — snapshot last frame's already-displayed
+  // values as the crossfade's starting point, so it eases from whatever was
+  // actually on screen rather than popping straight to the new target.
+  if(activeMode!==lastRenderedMode){
+    transitionFrom=lastRenderedMode===null?target:lastDisplayed;
+    transitionStart=now;
+    lastRenderedMode=activeMode;
+  }
+  const elapsed=now-transitionStart;
+  const displayed={};
+  if(transitionFrom && elapsed<MODE_TRANSITION_MS){
+    const e=easeInOutCubic(clamp01(elapsed/MODE_TRANSITION_MS));
+    Object.keys(target).forEach(k=>{ displayed[k]=lerp(transitionFrom[k],target[k],e); });
+  } else {
+    transitionFrom=null;
+    Object.assign(displayed,target);
+  }
+  lastDisplayed=displayed;
 
   gl.uniform2f(U.res,canvas.width,canvas.height);
   gl.uniform1f(U.time,(now-start)/1000);
   gl.uniform2f(U.mouse,mouse.x,mouse.y);
-  gl.uniform1f(U.speed,effSpeed);
-  gl.uniform1f(U.steps,effSteps);
-  gl.uniform1f(U.sparkle,effSparkle);
-  gl.uniform1f(U.ring_density,effRing);
-  gl.uniform1f(U.warp_strength,effWarp);
-  gl.uniform1f(U.hue_shift,effHue);
-  gl.uniform1f(U.drift_amp,effDriftAmp);
-  gl.uniform1f(U.drift_speed,effDriftSpeed);
-  gl.uniform1f(U.sparkle_size,effSparkleSize);
-  gl.uniform1f(U.sparkle_rate,effSparkleRate);
-  gl.uniform1f(U.vignette,effVignette);
-  gl.uniform1f(U.num_centers,effNumCenters);
-  gl.uniform3f(U.pal_a,effPr,effPg,effPb);
+  gl.uniform1f(U.speed,displayed.speed);
+  gl.uniform1f(U.steps,displayed.steps);
+  gl.uniform1f(U.sparkle,displayed.sparkle);
+  gl.uniform1f(U.ring_density,displayed.ring);
+  gl.uniform1f(U.warp_strength,displayed.warp);
+  gl.uniform1f(U.hue_shift,displayed.hue);
+  gl.uniform1f(U.drift_amp,displayed.driftAmp);
+  gl.uniform1f(U.drift_speed,displayed.driftSpeed);
+  gl.uniform1f(U.sparkle_size,displayed.sparkleSize);
+  gl.uniform1f(U.sparkle_rate,displayed.sparkleRate);
+  gl.uniform1f(U.vignette,displayed.vignette);
+  gl.uniform1f(U.num_centers,displayed.numCenters);
+  gl.uniform3f(U.pal_a,displayed.pr,displayed.pg,displayed.pb);
   gl.drawArrays(gl.TRIANGLES,0,3);
 
   // Baked overlays (retro scanline / colour filter) are plain DOM/CSS, not
-  // shader uniforms, but blend the same way — recomputed every frame here
-  // (cheap: two CSS string writes) rather than only on slider input, so
-  // they track the same continuous stat-driven intensity the shader does,
-  // even though the panel might currently be EDITING a different mode's
-  // values than the one actually rendering.
-  const retroOpaEff=lerp(base.retro.off?0:base.retro.opa, mode.retro.off?0:mode.retro.opa, t);
-  const retroHexEff=lerpHex(base.retro.hex, mode.retro.hex, t);
-  const rt=hexToRgba(retroHexEff,0), rs=hexToRgba(retroHexEff,retroOpaEff);
+  // shader uniforms, but blend (and now crossfade) the same way — recomputed
+  // every frame here (cheap: two CSS string writes) rather than only on
+  // slider input, so they track the same signal the shader does.
+  const rt=hexToRgba(vecToHex([displayed.retroR,displayed.retroG,displayed.retroB]),0);
+  const rs=hexToRgba(vecToHex([displayed.retroR,displayed.retroG,displayed.retroB]),displayed.retroOpa);
   retroEl.style.backgroundImage=`repeating-linear-gradient(0deg,${rt} 0px,${rt} 2px,${rs} 2px,${rs} 3px)`;
 
-  const cfOpaEff=lerp(base.cf.off?0:base.cf.opa, mode.cf.off?0:mode.cf.opa, t);
-  const cfHexEff=lerpHex(base.cf.hex, mode.cf.hex, t);
-  cfEl.style.background=hexToRgba(cfHexEff,cfOpaEff);
+  cfEl.style.background=hexToRgba(vecToHex([displayed.cfR,displayed.cfG,displayed.cfB]),displayed.cfOpa);
 }
 rafId=requestAnimationFrame(frame);
 

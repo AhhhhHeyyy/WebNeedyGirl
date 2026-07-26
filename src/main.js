@@ -11,6 +11,9 @@ import { spawnNestedScene3Popup, clientToLogical, popupTuning, prewarmRendererPo
 import { initMobileWiden } from './core/mobileWiden.js';
 import { StatStore } from './core/StatStore.js';
 import { EffectDirector } from './core/EffectDirector.js';
+import { followerTicker } from './core/followerTicker.js';
+import { DialogueDirector } from './core/DialogueDirector.js';
+import { DialogueStore, VALID_LANGS } from './core/DialogueStore.js';
 
 const STORAGE_KEY = 'needygirl-layer-layout';
 const STAT_STORAGE_KEY = 'needygirl-stat-store';
@@ -26,6 +29,43 @@ const resetBtn = document.getElementById('layer-reset-btn');
 const loadingScreen = document.getElementById('loading-screen');
 const loadingPercent = document.getElementById('loading-percent');
 
+// The one deliberate language-choice point for the dialogue system (see
+// DialogueStore.js's detectBrowserLang) — wired at module scope, not inside
+// boot(), so it's clickable the instant the page loads rather than only once
+// every layer/asset has finished (the whole point is picking a language
+// *while* the loading screen's progress bar is still moving). Anyone who
+// never touches it keeps whatever DialogueStore already resolved at import
+// time (saved choice, else the browser's own reported language).
+function wireLoadingLangPicker() {
+  const buttons = document.querySelectorAll('#loading-lang-picker .loading-lang-btn');
+  const sync = (lang) => buttons.forEach((b) => b.classList.toggle('active', b.dataset.lang === lang));
+  buttons.forEach((btn) => {
+    if (!VALID_LANGS.includes(btn.dataset.lang)) return;
+    btn.addEventListener('click', () => DialogueStore.setLang(btn.dataset.lang));
+  });
+  DialogueStore.on('change', (snap) => sync(snap.lang));
+}
+wireLoadingLangPicker();
+
+// The portrait "please rotate" prompt (see #rotate-prompt in index.html) can
+// be up before the player has ever touched the loading screen's language
+// picker, so it must follow the same DialogueStore language rather than
+// being hardcoded to zh/en.
+const ROTATE_PROMPT_TEXT = {
+  zh: '請將裝置轉為橫向以獲得最佳體驗',
+  en: 'Please rotate your device to landscape',
+  ja: '最適な体験のため、デバイスを横向きにしてください',
+  ko: '최적의 경험을 위해 기기를 가로 방향으로 돌려주세요',
+};
+function wireRotatePrompt() {
+  const msg = document.getElementById('rotate-prompt-msg');
+  if (!msg) return;
+  DialogueStore.on('change', (snap) => {
+    msg.textContent = ROTATE_PROMPT_TEXT[snap.lang] || ROTATE_PROMPT_TEXT.zh;
+  });
+}
+wireRotatePrompt();
+
 const stage = new Stage(pixiContainer);
 const manager = new LayerManager();
 window.__needyGirl = { stage, manager }; // dev-console debugging aid only
@@ -39,12 +79,38 @@ prewarmRendererPool();
 // canvas, lottie-web canvas), so they can only stack as whole blocks, not
 // interleave sprite-by-sprite across contexts. Reconciling that is the
 // composition root's job, not LayerManager's or any individual layer's.
+//
+// This zIndex is a no-op, though, not "10" — the <canvas> Pixi itself
+// creates is never given its own `position` (it inherits `static`), and
+// z-index only has an effect on a positioned element. #pixi-stage (the
+// canvas's positioned parent) has no z-index of its own either, so the
+// whole Pixi scene actually stacks at the implicit "auto" level among its
+// siblings under #stage-world (see reconcileZIndex below), not at "10".
+// Left as-is/documented rather than fixed outright — every other z-index
+// tuned below (Lottie's 5/20, chat.chatboard/chat.chatB's 11/12,
+// stickerListLayer's 22, retroFilter/tvGlitch/man/pixelCursor's 25-27) was
+// picked by testing against the app's ACTUAL current stacking, so forcing
+// this one to genuinely take effect would shuffle all of those relative to
+// the Pixi scene at once — a much bigger, untested change than this file
+// signs up for here.
 pixiContainer.querySelector('canvas').style.zIndex = '10';
 function reconcileZIndex() {
   const lottieLayer = manager.layers.find(l => l.type === 'lottie');
   if (!lottieLayer) return;
   const isFrontmost = manager.layers[manager.layers.length - 1] === lottieLayer;
-  lottieContainer.style.zIndex = isFrontmost ? '20' : '5';
+  // Not-frontmost used to fall back to '5' — below the (no-op, see above)
+  // Pixi canvas z-index, meant to read as "sits behind the composited
+  // scene". But because that canvas z-index never actually applies, '5'
+  // only ever really raced against chat.chatboard/chat.chatB's fixed
+  // z-index (11/12, see chat.chatboardLayer.js/chat.chatBLayer.js) — which
+  // it always lost, so Nested Scene 3 (and every pop-up spawned from its
+  // template, see nestedScene3PopupSpawner.js) rendered fine over the rest
+  // of the composited scene but got its rows/message bubbles painted over
+  // by chat's red/yellow highlighted lines. '13' clears that fixed pair
+  // while staying below stickerListLayer's frontmost tier (22) and
+  // retroFilter/tvGlitch/man/pixelCursor's always-on-top tiers (25-27), so
+  // this still loses to those exactly like '5' did.
+  lottieContainer.style.zIndex = isFrontmost ? '20' : '13';
 }
 manager.onChange(reconcileZIndex);
 
@@ -266,6 +332,8 @@ async function boot() {
   // EffectDirector's very first dispatch needs) is loaded and in the
   // manager by this point — safe to start reacting to StatStore changes.
   EffectDirector.start({ stage, manager, lottieContainer });
+  followerTicker.start();
+  DialogueDirector.start();
 
   // Widens Frame 1's box + the chat panel to reclaim pillarbox margin on
   // narrow/mobile viewports — see mobileWiden.js. Run after the saved/default
@@ -290,7 +358,12 @@ async function boot() {
   // doesn't wait or queue, it just opens another on top.
   const stageArea = document.getElementById('stage-area');
   stageArea.addEventListener('click', (e) => {
-    const rect = stageArea.getBoundingClientRect();
+    // The canvas's own live rect, not #stage-area's — #pixi-stage now sits
+    // inside #stage-world (see index.html/screenShake.js), which can be
+    // mid-shake and briefly offset from #stage-area's own (fixed) box.
+    // getBoundingClientRect() on the canvas itself always reflects wherever
+    // it's actually rendered on screen right now, shaking or not.
+    const rect = stage.app.view.getBoundingClientRect();
     const px = e.clientX - rect.left;
     const py = e.clientY - rect.top;
 
@@ -311,8 +384,7 @@ async function boot() {
     if (listStickers && listStickers.sprite.getBounds().contains(px, py)) return;
 
     // Frame 1's hit box is its live Pixi screen bounds (same coordinate
-    // space stageArea's own rect uses, since #pixi-stage sits absolute/100%
-    // inside #stage-area with no extra offset), a plain axis-aligned rect
+    // space the canvas's own rect above uses), a plain axis-aligned rect
     // check even though frame1 can be rotated/scaled — good enough for "did
     // this click clearly hit the frame".
     const frame1 = manager.get('frame1');
@@ -322,6 +394,12 @@ async function boot() {
       const { x, y } = clientToLogical(e.clientX, e.clientY, stage);
       spawnNestedScene3Popup(x, y, { stage, manager, lottieContainer })
         .catch(err => console.error('Failed to spawn Nested Scene 3 pop-up:', err));
+      // Clicking Angel herself also gets a reaction out of her — same
+      // monologue/choice pool DialogueDirector's own idle timer draws from,
+      // just fired on demand instead of waiting for the next tick (see
+      // DialogueDirector.triggerNow()'s own comment for why this always
+      // shows something even if a line is already up).
+      DialogueDirector.triggerNow();
       return;
     }
 
