@@ -57,6 +57,38 @@
     border: 3px solid #8fd0f2;
     overflow: hidden;
   }
+  /* User-requested "視訊視窗在mobile模式再大一些": on a phone/tablet the
+     whole 1920x1080 stage is already scaled down a lot more than on desktop
+     (see resizeStage() below), so the cam window ends up reading as small
+     even though it's proportionally identical — bump its logical (pre-scale)
+     width so it comes out visibly bigger post-scale on those screens.
+     Breakpoint matches shared/device-perf.js's own mobile/tablet proxy. */
+  @media (max-width: 1024px) {
+    #cam-window { width: 620px; }
+  }
+
+  /* Landscape-only, same widget as index.html's #rotate-prompt (same
+     markup/copy/animation) — user-requested "也要要求橫屏": the cam window
+     is wide-format (16:9) and this standalone page has no fallback layout
+     for portrait, so block it the same way the main app already does rather
+     than letting the window get squeezed. */
+  #rotate-prompt {
+    display: none;
+    position: fixed; inset: 0; z-index: 9999;
+    align-items: center; justify-content: center; flex-direction: column; gap: 18px;
+    background: linear-gradient(168deg, #ffd8ea 0%, #e8deff 48%, #d4e8ff 100%);
+    color: #7060a0; text-align: center; padding: 24px;
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  #rotate-prompt .icon { font-size: 56px; animation: rotate-hint 1.6s ease-in-out infinite; }
+  #rotate-prompt .msg { font-size: 15px; line-height: 1.7; }
+  @keyframes rotate-hint {
+    0%, 100% { transform: rotate(0deg); }
+    50% { transform: rotate(90deg); }
+  }
+  @media (orientation: portrait) and (max-width: 1024px) {
+    #rotate-prompt { display: flex; }
+  }
   #cam-window-inner {
     background: #fff;
   }
@@ -125,6 +157,10 @@
 </style>
 </head>
 <body>
+<div id="rotate-prompt">
+  <div class="icon">📱</div>
+  <div class="msg">請將裝置轉為橫向以獲得最佳體驗</div>
+</div>
 <div id="call-stage">
   <img id="call-bg" src="!amevanitysearchangry.gif" alt="">
 

@@ -26,6 +26,14 @@ const DESIGN_W = 760;
 const FIT_MARGIN_W = 0.94; // was `94vw`
 const FIT_MARGIN_H = 0.92; // headroom so the popup never touches the top/bottom edge
 
+// Same "is this a phone/tablet" viewport-width proxy shared/device-perf.js
+// already uses elsewhere in the project (touch devices rarely exceed ~1024
+// CSS px even in landscape) — user-requested "mobile版的通話視窗有點太大了
+// 縮小一半": the popup reads as oversized on a phone screen even once it's
+// already fit-to-viewport, so mobile gets an extra flat 0.5x on top of that.
+const MOBILE_BREAKPOINT_PX = 1024;
+const MOBILE_SCALE_FACTOR = 0.5;
+
 // Same lang set (and the same saved/detected choice — see DialogueStore's
 // own loadLang) the loading screen's picker and Frame 1's dialogue bubbles
 // already use, so the call modal always agrees with the rest of the app
@@ -224,7 +232,8 @@ function applyFitScale() {
   if (!naturalH) return; // e.g. mid-transition while display is toggling
   const scaleW = (window.innerWidth * FIT_MARGIN_W) / DESIGN_W;
   const scaleH = (window.innerHeight * FIT_MARGIN_H) / naturalH;
-  const scale = Math.min(1, scaleW, scaleH);
+  const isMobile = window.innerWidth <= MOBILE_BREAKPOINT_PX;
+  const scale = Math.min(1, scaleW, scaleH) * (isMobile ? MOBILE_SCALE_FACTOR : 1);
   root.style.setProperty('--pco-scale', scale);
 }
 
