@@ -571,10 +571,14 @@ function ensureComposeModalStyle() {
          (see index.html) — pixelCursorLayer.js's decorative cursor is
          frontmost above this modal too (its FRONTMOST_Z clears CCM_Z_INDEX),
          so the real OS pointer has to be hidden here as well, same reasoning
-         as phoneCallOverlay.js's own modal. */
-      cursor: none;
+         as phoneCallOverlay.js's own modal.
+         !important, redeclared on .open below too: same "native arrow
+         flashes back in while an animating transform/opacity is actively
+         transitioning" repaint-timing edge case documented at
+         frame1Layer.js's .ng-dlg-choice-btn cursor:none. */
+      cursor: none !important;
     }
-    #ng-ccm-backdrop.open { opacity: 1; pointer-events: auto; }
+    #ng-ccm-backdrop.open { opacity: 1; pointer-events: auto; cursor: none !important; }
 
     #ng-ccm-modal {
       position: fixed; left: 50%; top: 50%;
@@ -590,18 +594,23 @@ function ensureComposeModalStyle() {
       opacity: 0;
       transition: transform .32s cubic-bezier(.22,1.15,.4,1), opacity .25s ease;
       pointer-events: none;
-      cursor: none; /* see #ng-ccm-backdrop's cursor:none above */
+      cursor: none !important; /* see #ng-ccm-backdrop's cursor:none above — !important, and
+        redeclared on .open/.dragging below, for the same reason: this element's own transform
+        is what's actively changing (opening, AND every pointermove while dragging), which is
+        exactly the trigger frame1Layer.js's .ng-dlg-choice-btn comment documents for the native
+        arrow flashing back in mid-animation. */
     }
     #ng-ccm-modal.open {
       transform: translate(calc(-50% + var(--ccm-drag-x, 0px)), calc(-50% + var(--ccm-drag-y, 0px))) scale(var(--ccm-scale, 1));
       opacity: 1;
       pointer-events: auto;
+      cursor: none !important;
     }
     /* Dragging (see onWindowPointerDown) skips the opening scale/opacity
        transition above via .dragging — otherwise every pointermove fights a
        .32s eased transform transition and the window visibly lags the
        cursor instead of tracking it 1:1. */
-    #ng-ccm-modal.dragging { transition: none; }
+    #ng-ccm-modal.dragging { transition: none; cursor: none !important; }
     @media (max-width: ${CCM_MOBILE_BREAKPOINT_PX}px) {
       #ng-ccm-modal { width: ${CCM_MOBILE_DESIGN_W}px; }
     }
@@ -642,16 +651,22 @@ function ensureComposeModalStyle() {
       padding: 0 8px;
       background: linear-gradient(90deg, #d8f0ff 0%, #f6cdf0 50%, #d8f0ff 100%);
       border-bottom: 2px solid #8fd0f2;
-      cursor: grab; /* the whole top 40% of .ccm-window drags — see onWindowPointerDown */
+      /* User-requested: unlike the rest of the game (DragTransform.js
+         handles etc., where the native cursor is deliberately left showing
+         over interactive elements as functional feedback), this modal's
+         buttons/drag zone show the decorative pixel cursor only — dragging
+         itself is still driven purely by onWindowPointerDown's own JS, so
+         dropping the native grab/grabbing hand doesn't affect the gesture. */
+      cursor: none !important; /* was: grab — the whole top 40% of .ccm-window drags, see onWindowPointerDown */
     }
-    #ng-ccm-modal.dragging .ccm-titlebar { cursor: grabbing; }
+    #ng-ccm-modal.dragging .ccm-titlebar { cursor: none !important; /* was: grabbing */ }
     #ng-ccm-modal .ccm-titleicon { width: 13px; height: 13px; border-radius: 2px; background: #5b67c7; }
     #ng-ccm-modal .ccm-title { font-size: 14px; font-weight: 700; letter-spacing: .03em; }
     #ng-ccm-modal .ccm-winbtn {
       width: 16px; height: 16px; border-radius: 2px;
       background: rgba(255,255,255,0.65); border: 1px solid #6a5fae;
       display: flex; align-items: center; justify-content: center;
-      position: relative; cursor: pointer;
+      position: relative; cursor: none !important; /* see .ccm-titlebar's cursor:none above */
     }
     #ng-ccm-modal .ccm-winbtn:hover { background: #f2a5ae; }
     #ng-ccm-modal .ccm-x::before, #ng-ccm-modal .ccm-x::after {
@@ -670,7 +685,7 @@ function ensureComposeModalStyle() {
       appearance: none; -webkit-appearance: none;
       border-radius: 999px; background: #fff;
       padding: 0 16px; font-family: inherit; font-size: 15px; color: #4b3d73;
-      cursor: none; /* text inputs get their own native I-beam by default, overriding the inherited none — see .ng-chat-input's own cursor:none for the same override */
+      cursor: none !important; /* text inputs get their own native I-beam by default, overriding the inherited none — see .ng-chat-input's own cursor:none for the same override; !important for the same repaint-timing reason as #ng-ccm-modal's own cursor:none above */
     }
     #ng-ccm-modal .ccm-name-input::placeholder, #ng-ccm-modal .ccm-msg-input::placeholder {
       color: rgba(75, 61, 115, 0.4);
@@ -690,7 +705,7 @@ function ensureComposeModalStyle() {
       flex: 1 1 0; aspect-ratio: 1; padding: 4px;
       border: none; border-radius: 10px; background: #fff;
       display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
+      cursor: none !important; /* see .ccm-titlebar's cursor:none above */
     }
     #ng-ccm-modal .ccm-sticker-btn img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
     /* Selection ring, not a fill swap — same reasoning as chat's own
@@ -700,7 +715,8 @@ function ensureComposeModalStyle() {
     #ng-ccm-modal .ccm-tier-row { display: flex; gap: 6px; }
     #ng-ccm-modal .ccm-tier-btn {
       flex: 1 1 0; height: 32px; border: none; border-radius: 999px;
-      background: #eee3f0; color: #4b3d73; font-family: inherit; font-size: 13px; cursor: pointer;
+      background: #eee3f0; color: #4b3d73; font-family: inherit; font-size: 13px;
+      cursor: none !important; /* see .ccm-titlebar's cursor:none above */
     }
     #ng-ccm-modal .ccm-tier-btn.active { box-shadow: 0 0 0 2px rgba(255,255,255,0.85) inset; }
     /* Same 5 superchat hues as .ng-chat-overlay's --ng-sc-* ladder — hardcoded
@@ -718,22 +734,27 @@ function ensureComposeModalStyle() {
     }
     #ng-ccm-modal .ccm-btn {
       border: none; border-radius: 999px; padding: 9px 22px;
-      font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+      font-family: inherit; font-size: 14px; font-weight: 700;
+      cursor: none !important; /* see .ccm-titlebar's cursor:none above */
       transition: transform .12s ease;
     }
-    #ng-ccm-modal .ccm-btn:active { transform: scale(0.95); }
+    /* :active redeclares cursor:none — its own transform is what's actively
+       changing on press, the same trigger noted at #ng-ccm-modal's own
+       cursor:none above. */
+    #ng-ccm-modal .ccm-btn:active { transform: scale(0.95); cursor: none !important; }
     #ng-ccm-modal .ccm-cancel { background: #eee3f0; color: #4b3d73; }
     #ng-ccm-modal .ccm-send { background: #e08a9a; color: #fff; }
-    #ng-ccm-modal .ccm-send:disabled { opacity: .5; cursor: default; }
+    #ng-ccm-modal .ccm-send:disabled { opacity: .5; cursor: none !important; }
   `;
   document.head.appendChild(style);
 }
 
 // Built once per ChatBoardLayer instance (see buildOverlay() below) and
-// appended straight to document.body — same reason as phoneCallOverlay.js's
-// own modal: it needs to sit centered over the WHOLE viewport, not inside
-// the chatboard sprite's own DOM-overlay box (which is wherever the board
-// has been dragged/scaled to, see attachDomOverlay's onReposition).
+// appended into #viewport-root (see the appendChild call below for why not
+// document.body directly) — same reason as phoneCallOverlay.js's own modal:
+// it needs to sit centered over the WHOLE viewport, not inside the
+// chatboard sprite's own DOM-overlay box (which is wherever the board has
+// been dragged/scaled to, see attachDomOverlay's onReposition).
 // `onSend` receives the fully-resolved payload once the user hits Send;
 // buildOverlay() below wires that to the same StatStore/keyword/Firestore
 // logic the old inline composer's submit() used to run directly.
@@ -769,7 +790,19 @@ function buildComposeModal({ onSend }) {
       </div>
     </div>
   `;
-  document.body.append(backdrop, root);
+  // Appended into #viewport-root, not document.body directly — same reason
+  // as phoneCallOverlay.js's own modal: #viewport-root is `position: fixed`,
+  // which always creates its own stacking context regardless of z-index, so
+  // as a direct child of <body> this modal's z-index was being compared
+  // against #viewport-root as a WHOLE (with pixelCursorLayer.js's cursor
+  // iframe trapped inside it), never against the cursor iframe's z-index
+  // directly — no matter how high FRONTMOST_Z was raised, the real OS
+  // pointer kept showing over this modal instead of the decorative one.
+  // Living inside #viewport-root's context instead lets CCM_Z_INDEX actually
+  // compare against the cursor iframe. Still centers on the real viewport
+  // via position:fixed either way (#viewport-root has no transform/filter/
+  // will-change to redefine the containing block for it).
+  document.getElementById('viewport-root').append(backdrop, root);
 
   const titleEl = root.querySelector('.ccm-title');
   const nameLabelEl = root.querySelector('.ccm-name-label');

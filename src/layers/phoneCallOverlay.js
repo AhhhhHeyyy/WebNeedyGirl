@@ -106,13 +106,21 @@ function injectStyle() {
          well or the two would show at once. .pco-winbtn/.pco-btn below still
          set their own explicit cursor, which wins over this by inheritance
          rules regardless — functional feedback over decorative, same as
-         DragTransform.js's handles. */
-      cursor: none;
+         DragTransform.js's handles.
+         !important, redeclared on .open below too: same "native arrow
+         flashes back in while the element's own transform is actively
+         transitioning" repaint-timing edge case documented at
+         frame1Layer.js's .ng-dlg-choice-btn cursor:none (user-reported here
+         as "static = fine, only shows once I start moving the mouse" — this
+         overlay transitions its own transform/opacity on open, matching that
+         same trigger). */
+      cursor: none !important;
     }
     #phone-call-overlay.open {
       transform: translate(-50%, -50%) scale(var(--pco-scale, 1));
       opacity: 1;
       pointer-events: auto;
+      cursor: none !important;
     }
     @media (max-width: ${MOBILE_BREAKPOINT_PX}px) {
       #phone-call-overlay { width: ${MOBILE_DESIGN_W}px; }
@@ -138,9 +146,14 @@ function injectStyle() {
       width: 16px; height: 16px; border-radius: 2px;
       background: rgba(255,255,255,0.65); border: 1px solid #6a5fae;
       display: flex; align-items: center; justify-content: center;
-      position: relative; cursor: default;
+      position: relative;
+      /* User-requested: unlike the rest of the game (DragTransform.js
+         handles etc., where the native cursor is deliberately left showing
+         over interactive elements as functional feedback over the
+         decorative one), THIS overlay's buttons should show the decorative
+         pixel cursor only — no native pointer/default underneath it. */
+      cursor: none !important;
     }
-    #phone-call-overlay .pco-winbtn.pco-close { cursor: pointer; }
     #phone-call-overlay .pco-winbtn.pco-close:hover { background: #f2a5ae; }
     #phone-call-overlay .pco-sq { width: 7px; height: 7px; border: 1.3px solid #5a4a9e; }
     #phone-call-overlay .pco-sq2 { width: 6px; height: 6px; border: 1.3px solid #5a4a9e; position: absolute; top: 3px; left: 3px; background: #f6cdf0; }
@@ -178,13 +191,16 @@ function injectStyle() {
     #phone-call-overlay .pco-action-label { font-size: 18px; font-weight: 700; color: #6a3f7a; }
     #phone-call-overlay .pco-btn {
       width: 74px; height: 74px;
-      border-radius: 50%; border: none; cursor: pointer;
+      border-radius: 50%; border: none; cursor: none !important; /* see .pco-winbtn's cursor:none above */
       display: flex; align-items: center; justify-content: center; color: #fff;
       box-shadow: 0 6px 16px rgba(40, 10, 30, 0.3);
       transition: transform .15s ease, box-shadow .15s ease;
     }
-    #phone-call-overlay .pco-btn:hover { transform: scale(1.06); }
-    #phone-call-overlay .pco-btn:active { transform: scale(0.94); }
+    /* :hover/:active redeclare cursor:none — these scale the button's own
+       transform on hover/press, the same "actively-animating transform"
+       trigger noted at #phone-call-overlay's own cursor:none above. */
+    #phone-call-overlay .pco-btn:hover { transform: scale(1.06); cursor: none !important; }
+    #phone-call-overlay .pco-btn:active { transform: scale(0.94); cursor: none !important; }
     #phone-call-overlay .pco-btn.pco-accept { background: radial-gradient(circle at 35% 30%, #8fd3a1, #5da472); }
     #phone-call-overlay .pco-btn.pco-decline { background: radial-gradient(circle at 35% 30%, #e29d95, #c26b62); }
     #phone-call-overlay .pco-btn.pco-decline svg { transform: rotate(135deg); }
@@ -232,7 +248,21 @@ function buildDom() {
       <div class="pco-statusbar"><span></span><span></span><span></span></div>
     </div>
   `;
-  document.body.appendChild(root);
+  // Appended into #viewport-root, not document.body directly: #viewport-root
+  // is `position: fixed`, which (per spec) unconditionally creates its own
+  // stacking context regardless of z-index — so it, and everything inside
+  // it (including pixelCursorLayer.js's cursor iframe, buried a few levels
+  // deeper), gets compared as a single unit against this element's OWN
+  // z-index if this were still a direct child of <body>. That trapped the
+  // cursor iframe's z-index from ever actually competing against this
+  // overlay's Z_INDEX, no matter how high it was raised, and left the real
+  // OS pointer showing over this modal instead of the decorative one.
+  // Living inside #viewport-root's stacking context instead lets this
+  // overlay's z-index compare directly against the cursor iframe's, which
+  // is what actually makes it win. position:fixed here still centers on the
+  // real viewport either way — #viewport-root has no transform/filter/
+  // will-change of its own to redefine the containing block for it.
+  document.getElementById('viewport-root').appendChild(root);
 
   root.querySelector('.pco-accept').addEventListener('click', onAccept);
   root.querySelector('.pco-decline').addEventListener('click', onDecline);

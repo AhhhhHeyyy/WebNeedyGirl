@@ -10,15 +10,23 @@ import { EDIT_MODE } from '../core/editMode.js';
 // This iframe lives inside #stage-area, which (like every ancestor up to
 // #stage-world) has no z-index of its own — so it never gains its own
 // stacking context, and this element's z-index actually competes directly
-// in the document's ROOT stacking context, not just against its retroFilter/
+// within #viewport-root's stacking context (the nearest ancestor that
+// forks one, being `position: fixed`), not just against its retroFilter/
 // tvGlitch/man siblings. That's why this has to clear phoneCallOverlay.js's
-// 5000 and chat.chatboardLayer.js's compose-modal 4500 too, not just the
-// in-stage layers' 25/26: both of those overlays live on document.body
-// outside #stage-area and were previously left showing the real OS pointer
-// over them instead of this decorative one (user-requested: 來電視窗跟留言
-// 視窗也要使用客製化滑鼠). Stays below #rotate-prompt (9999) and
-// #loading-screen (10000) — neither needs a decorative cursor drawn over it.
-const FRONTMOST_Z = 5500; // above phoneCallOverlay's 5000, chat compose modal's 4500, retroFilter/tvGlitch/man's 25-26, lottie's 20, pixi's 10
+// 5000, chat.chatboardLayer.js's compose-modal 4500, AND #loading-screen's
+// 10000 too, not just the in-stage layers' 25/26: all three live inside
+// #viewport-root now (see index.html/phoneCallOverlay.js/
+// chat.chatboardLayer.js for why each was moved there) specifically so
+// their z-index is comparable against this one at all — a body-level
+// sibling of #viewport-root has its z-index compared against the WHOLE of
+// #viewport-root as one unit, never against anything nested inside it, no
+// matter how high this constant is set (confirmed empirically before this
+// fix). User-requested: 來電視窗跟留言視窗也要使用客製化滑鼠, then 加載頁面
+// 也都要用客製化滑鼠(mobile模式就不需要) — mobile already stays hidden via
+// _applyMobileState() below regardless. Stays below #rotate-prompt (9999,
+// left outside #viewport-root — mobile/portrait-only, and the cursor is
+// already hidden on mobile anyway).
+const FRONTMOST_Z = 10500; // above #loading-screen's 10000, phoneCallOverlay's 5000, chat compose modal's 4500, retroFilter/tvGlitch/man's 25-26, lottie's 20, pixi's 10
 
 // Same <=1024 "mobile/tablet" cutoff used for the layer panel (index.html)
 // and the render-resolution cap (shared/device-perf.js). The custom pixel
@@ -42,6 +50,34 @@ const FINE_POINTER_QUERY = '(pointer: fine) and (hover: hover)';
 export class PixelCursorLayer extends BaseIframeLayer {
   constructor(opts) {
     super(opts);
+
+    // super() appended this.el into #bg-effect-layer, same as every other
+    // effect layer — but that div lives inside #stage-world, which has its
+    // own `will-change: transform` (see index.html, for screenShake.js) and
+    // that alone forks a NEW stacking context there (per spec, a will-change
+    // value that would itself trigger one — transform does — forces the
+    // fork regardless of whether a transform is actually applied right now).
+    // Nested inside that fork, this iframe's z-index (however high
+    // FRONTMOST_Z is set below) only ever ranks against its retroFilter/
+    // tvGlitch/man siblings — it can never win against phoneCallOverlay.js's
+    // or chat.chatboardLayer.js's compose-modal overlays, which are appended
+    // into #viewport-root (a stacking context of its own, since it's
+    // `position: fixed`) as a SEPARATE branch from #stage-world entirely:
+    // #stage-world's whole fork just sits at #viewport-root's implicit
+    // z-index:auto tier as one unit, always behind anything in that same
+    // context with an explicit positive z-index (confirmed empirically — a
+    // 5500 nested in #stage-world's fork still lost to a 5000 living
+    // directly in #viewport-root). Moving up to a direct child of
+    // #stage-area sidesteps the fork: #stage-area has no transform/filter/
+    // will-change of its own, so this iframe's z-index now competes
+    // directly inside #viewport-root's context, same level as those
+    // overlays. Same-size box either way (#stage-area is exactly what
+    // #bg-effect-layer/#stage-world were already both 100%-of anyway).
+    // Bonus: this also un-shakes the cursor from screenShake.js's camera
+    // shake (#stage-world is what that actually moves) — which reads as
+    // more correct anyway, since a real mouse pointer shouldn't jiggle with
+    // the scene it's laid over.
+    document.getElementById('stage-area').appendChild(this.el);
 
     // Full-viewport + frontmost would otherwise swallow every click/drag on
     // the stage, so — like retroFilterLayer.js — this iframe is click-through
