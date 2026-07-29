@@ -260,7 +260,7 @@ function positionCursorEl() {
 //              rest, higher = lighter touch (less lag settling in at rest).
 //   beta:      how fast the cutoff opens up as speed increases (px/s) —
 //              higher = faster-moving cursor sheds smoothing sooner.
-const ONE_EURO_MIN_CUTOFF = 20.0;
+const ONE_EURO_MIN_CUTOFF = 70.0;
 const ONE_EURO_BETA = 30.015;
 const ONE_EURO_D_CUTOFF = 6.0;
 
@@ -344,9 +344,16 @@ trailInput.addEventListener('input', e => { trailHex = e.target.value; saveState
 
 /* ── Panel toggle ── parent page also drives this via postMessage when the
    effect is embedded frontmost/click-through (see pixelCursorLayer.js) —
-   this local handler still lets the page work standalone too. */
+   this local handler still lets the page work standalone too. Embedded, this
+   iframe sits above every other layer (see pixelCursorLayer.js's FRONTMOST_Z),
+   so its own #panel-toggle would otherwise render on top of everything even
+   though pixelCursorLayer.js already provides a real (EDIT_MODE-gated) proxy
+   button for the exact same click — hide the redundant internal one there;
+   standalone (opened directly, not inside an iframe) it stays visible/usable. */
 const panel = document.getElementById('panel');
-document.getElementById('panel-toggle').onclick = () => panel.classList.toggle('closed');
+const panelToggleBtn = document.getElementById('panel-toggle');
+if (window.self !== window.top) panelToggleBtn.style.display = 'none';
+panelToggleBtn.onclick = () => panel.classList.toggle('closed');
 addEventListener('message', (e) => {
   if (e.origin !== location.origin) return;
   if (e.data?.type === 'ng-pixelCursor-toggle') panel.classList.toggle('closed');

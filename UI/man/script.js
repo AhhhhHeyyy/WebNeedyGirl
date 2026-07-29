@@ -71,14 +71,18 @@ makeSlider({ id: 'sg-opacity', label: 'Opacity', min: 0.2, max: 1, step: 0.05, d
 
 /* ── Panel toggle ── */
 const panel = document.getElementById('panel');
-document.getElementById('panel-toggle').onclick = () => panel.classList.toggle('closed');
+const panelToggleBtn = document.getElementById('panel-toggle');
 
 /* manLayer.js pins this iframe click-through and frontmost (so the popup
    never swallows clicks meant for the layers underneath it), which also
    makes the #panel-toggle button above unreachable from outside — it adds
    its own always-clickable proxy button in the parent document instead,
    which just messages this document to flip the exact same panel used
-   when this effect runs standalone (mirrors UI/retroFilter/script.js). */
+   when this effect runs standalone (mirrors UI/retroFilter/script.js).
+   Embedded, hide this now-unclickable internal button so it doesn't sit
+   on top of the parent's own EDIT_MODE-gated proxy. */
+if (window.self !== window.top) panelToggleBtn.style.display = 'none';
+panelToggleBtn.onclick = () => panel.classList.toggle('closed');
 window.addEventListener('message', (e) => {
   if (e.origin !== location.origin) return;
   if (e.data?.type === 'ng-man-toggle') panel.classList.toggle('closed');

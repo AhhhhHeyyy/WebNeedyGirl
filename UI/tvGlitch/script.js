@@ -837,9 +837,13 @@ armGlitch();
 /* ── Panel toggle ── standalone click; embedded, tvGlitchLayer.js's proxy
    button messages ng-tvglitch-toggle instead (mirrors ng-retrofilter-toggle
    in UI/retroFilter/script.js), since the iframe is pointer-events:none by
-   default when composited in front of everything. ── */
+   default when composited in front of everything. Hide the internal button
+   there too — unclickable through the iframe anyway, but still visible on
+   top of the parent's own EDIT_MODE-gated proxy without this. ── */
 const panel = document.getElementById('panel');
-document.getElementById('panel-toggle').onclick = () => panel.classList.toggle('closed');
+const panelToggleBtn = document.getElementById('panel-toggle');
+if (window.self !== window.top) panelToggleBtn.style.display = 'none';
+panelToggleBtn.onclick = () => panel.classList.toggle('closed');
 
 /* ── Reset ── */
 document.getElementById('reset-btn').onclick = () => {

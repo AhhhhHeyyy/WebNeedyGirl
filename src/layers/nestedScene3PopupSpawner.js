@@ -132,6 +132,19 @@ function popupOpenProgress(frame) {
   return 0;
 }
 
+// User-requested: mashing clicks on the character used to spawn an unbounded
+// pile of pop-ups at once — each one constructs its own Lottie instance +
+// Spine skeleton (see spawnNestedScene3Popup below), and however many land
+// inside one input burst all pay that construction cost before the next
+// paint, which is what actually read as "clicking stutters". Capped at the
+// same count as the prewarmed renderer pool just below, so any accepted
+// pop-up always finds an already-warm renderer waiting for it instead of
+// falling through to a fresh (expensive, see DEBUG_NOTES.md #7) WebGL
+// context construction — letting more pop-ups through than the pool holds
+// would just move the same stutter from "too many Lottie/Spine builds" to
+// "too many fresh WebGL contexts".
+export const MAX_CONCURRENT_POPUPS = 4;
+
 // A pool of small dedicated PIXI.Renderer instances, reused across pop-ups
 // instead of constructing (and destroying) a fresh one per click. Spinning
 // up a new WebGL context is a synchronous, comparatively heavy operation —
@@ -150,7 +163,7 @@ function popupOpenProgress(frame) {
 // cost so it lands during boot instead of during actual clicking.
 const rendererPool = [];
 
-export function prewarmRendererPool(count = 2) {
+export function prewarmRendererPool(count = MAX_CONCURRENT_POPUPS) {
   for (let i = 0; i < count; i++) {
     rendererPool.push(new PIXI.Renderer({ antialias: true, backgroundAlpha: 1 }));
   }
@@ -179,7 +192,29 @@ export function clientToLogical(clientX, clientY, stage) {
   };
 }
 
+// Reserved the instant a spawn is accepted (before this function's first
+// `await`), not just once openPopups (further below) tracks it near the end
+// of the async setup — a burst of clicks arriving while an earlier one is
+// still mid-construction would otherwise all read the same not-yet-updated
+// openPopups.size and slip past the cap together, which is exactly the
+// "clicking fast opens a pile at once" case MAX_CONCURRENT_POPUPS exists to
+// stop. Released in the onComplete cleanup below, once the pop-up actually
+// closes — not when it merely finishes constructing — so it occupies its
+// reserved slot for its whole visible lifetime.
+let activePopupCount = 0;
+
 export async function spawnNestedScene3Popup(x, y, { stage, manager, lottieContainer }) {
+  if (activePopupCount >= MAX_CONCURRENT_POPUPS) return null; // dropped: already at the concurrency cap, see MAX_CONCURRENT_POPUPS
+  activePopupCount++;
+  try {
+    return await spawnNestedScene3PopupInner(x, y, { stage, manager, lottieContainer });
+  } catch (err) {
+    activePopupCount--; // normal path releases this in onComplete instead — only the failure path needs it released here
+    throw err;
+  }
+}
+
+async function spawnNestedScene3PopupInner(x, y, { stage, manager, lottieContainer }) {
   // The panel-editable "dark.nestedScene3" layer never plays itself anymore
   // (see main.js's boot()) — it just supplies the default scale/rotation so
   // resizing it once in the panel resizes every future pop-up.
@@ -358,6 +393,7 @@ export async function spawnNestedScene3Popup(x, y, { stage, manager, lottieConta
     offComplete();
     stage.app.ticker.remove(tick);
     openPopups.delete(popupRef);
+    activePopupCount--; // frees the slot MAX_CONCURRENT_POPUPS reserved back at spawn time
     win.destroy(); // also removes cropCanvas/coverEl, both children of win.el
     releaseRenderer(miniRenderer); // back to the pool, not destroyed — see acquireRenderer()
     viewContainer.destroy({ children: true }); // also destroys `spine`

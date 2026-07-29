@@ -171,9 +171,15 @@ document.getElementById('reset-btn').onclick = () => {
   location.reload();
 };
 
-/* ── Panel toggle ── */
+/* ── Panel toggle ── this iframe is click-through by default when embedded
+   (see retroFilterLayer.js), whose own EDIT_MODE-gated proxy button flips
+   pointer-events on and messages ng-retrofilter-toggle here instead — so
+   the internal button below is unreachable (and unclickable) when embedded;
+   hide it there so it doesn't just sit on top of the proxy. */
 const panel = document.getElementById('panel');
-document.getElementById('panel-toggle').onclick = () => panel.classList.toggle('closed');
+const panelToggleBtn = document.getElementById('panel-toggle');
+if (window.self !== window.top) panelToggleBtn.style.display = 'none';
+panelToggleBtn.onclick = () => panel.classList.toggle('closed');
 
 /* ── Darkness-intensity lerp loop ── this effect had no rAF loop at all
    before (pure CSS + slider-driven opacity, nothing to animate on its own),

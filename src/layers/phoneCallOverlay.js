@@ -99,6 +99,15 @@ function injectStyle() {
       opacity: 0;
       transition: transform .42s cubic-bezier(.22,1.15,.4,1), opacity .3s ease;
       pointer-events: none;
+      /* This modal lives on document.body, outside #stage-area's own
+         cursor:none rule (see index.html) — pixelCursorLayer.js's decorative
+         cursor is frontmost above this too (its FRONTMOST_Z clears this
+         overlay's Z_INDEX), so the real OS pointer has to be hidden here as
+         well or the two would show at once. .pco-winbtn/.pco-btn below still
+         set their own explicit cursor, which wins over this by inheritance
+         rules regardless — functional feedback over decorative, same as
+         DragTransform.js's handles. */
+      cursor: none;
     }
     #phone-call-overlay.open {
       transform: translate(-50%, -50%) scale(var(--pco-scale, 1));

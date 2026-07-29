@@ -2,6 +2,7 @@ import { BaseIframeLayer } from './BaseIframeLayer.js';
 import { StatStore } from '../core/StatStore.js';
 import { triggerPhoneCall } from './phoneCallOverlay.js';
 import { clampIntoBoardingSafeArea, BOARDING_SAFE_PADDING_U } from '../core/boardingSafeArea.js';
+import { SoundManager } from '../core/soundManager.js';
 
 // Renders the 5 clickable sticker icons on top of the "listStickers" board
 // (UI/list-stickers.png, see listStickersLayer.js) plus their click-to-spawn
@@ -342,6 +343,7 @@ export class StickerListLayer extends BaseIframeLayer {
   }
 
   _postClick(index) {
+    SoundManager.playSelect();
     registerStickerClick(index);
     this.el.contentWindow?.postMessage({ type: 'ng-stickerlist-click', index }, window.location.origin);
   }

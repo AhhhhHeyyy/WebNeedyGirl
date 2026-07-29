@@ -6,7 +6,19 @@ import { EDIT_MODE } from '../core/editMode.js';
 // supposed to be drawn on top of — same unconditional frontmost trick
 // retroFilterLayer.js uses, just pointed one notch further front so it wins
 // over that filter too.
-const FRONTMOST_Z = 27; // above retroFilterLayer's 25, lottie's 20, pixi's 10
+//
+// This iframe lives inside #stage-area, which (like every ancestor up to
+// #stage-world) has no z-index of its own — so it never gains its own
+// stacking context, and this element's z-index actually competes directly
+// in the document's ROOT stacking context, not just against its retroFilter/
+// tvGlitch/man siblings. That's why this has to clear phoneCallOverlay.js's
+// 5000 and chat.chatboardLayer.js's compose-modal 4500 too, not just the
+// in-stage layers' 25/26: both of those overlays live on document.body
+// outside #stage-area and were previously left showing the real OS pointer
+// over them instead of this decorative one (user-requested: 來電視窗跟留言
+// 視窗也要使用客製化滑鼠). Stays below #rotate-prompt (9999) and
+// #loading-screen (10000) — neither needs a decorative cursor drawn over it.
+const FRONTMOST_Z = 5500; // above phoneCallOverlay's 5000, chat compose modal's 4500, retroFilter/tvGlitch/man's 25-26, lottie's 20, pixi's 10
 
 // Same <=1024 "mobile/tablet" cutoff used for the layer panel (index.html)
 // and the render-resolution cap (shared/device-perf.js). The custom pixel

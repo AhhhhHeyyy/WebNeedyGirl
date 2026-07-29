@@ -511,9 +511,14 @@ document.getElementById('reset-btn').onclick=()=>{
    (see holographicLayer.js) — the internal panel-toggle button below only
    works when this effect is viewed standalone; embedded, the parent's own
    🔮 proxy button flips pointer-events on and messages ng-holo-toggle here
-   instead (mirrors UI/retroFilter/script.js's ng-retrofilter-toggle). */
+   instead (mirrors UI/retroFilter/script.js's ng-retrofilter-toggle). Hide
+   the internal button when embedded so it doesn't sit there unclickable
+   (pointer-events:none on the iframe) yet still visible on top of the
+   parent's own EDIT_MODE-gated controls. */
 const panel=document.getElementById('panel');
-document.getElementById('panel-toggle').onclick=()=>panel.classList.toggle('closed');
+const panelToggleBtn=document.getElementById('panel-toggle');
+if(window.self!==window.top) panelToggleBtn.style.display='none';
+panelToggleBtn.onclick=()=>panel.classList.toggle('closed');
 addEventListener('message',(e)=>{
   if(e.origin!==location.origin) return;
   if(e.data?.type==='ng-holo-toggle') panel.classList.toggle('closed');

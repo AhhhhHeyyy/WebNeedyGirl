@@ -5,6 +5,7 @@ import { DialogueStore } from '../core/DialogueStore.js';
 import { matchMessage, KEYWORD_CATEGORIES } from '../core/keywordTable.js';
 import { triggerAscensionFlood } from './yandereProtoOverlay.js';
 import { saveComment, loadComments } from '../../shared/firebase.js';
+import { SoundManager } from '../core/soundManager.js';
 
 // chat.chatboard (UI/chat/Chatboard.png) is the frame's lavender FILL —
 // the actual message list + input bar seen in the reference mockup is real
@@ -566,6 +567,12 @@ function ensureComposeModalStyle() {
       z-index: ${CCM_Z_INDEX - 1};
       opacity: 0; pointer-events: none;
       transition: opacity .25s ease;
+      /* Lives on document.body, outside #stage-area's own cursor:none rule
+         (see index.html) — pixelCursorLayer.js's decorative cursor is
+         frontmost above this modal too (its FRONTMOST_Z clears CCM_Z_INDEX),
+         so the real OS pointer has to be hidden here as well, same reasoning
+         as phoneCallOverlay.js's own modal. */
+      cursor: none;
     }
     #ng-ccm-backdrop.open { opacity: 1; pointer-events: auto; }
 
@@ -583,6 +590,7 @@ function ensureComposeModalStyle() {
       opacity: 0;
       transition: transform .32s cubic-bezier(.22,1.15,.4,1), opacity .25s ease;
       pointer-events: none;
+      cursor: none; /* see #ng-ccm-backdrop's cursor:none above */
     }
     #ng-ccm-modal.open {
       transform: translate(calc(-50% + var(--ccm-drag-x, 0px)), calc(-50% + var(--ccm-drag-y, 0px))) scale(var(--ccm-scale, 1));
@@ -662,6 +670,7 @@ function ensureComposeModalStyle() {
       appearance: none; -webkit-appearance: none;
       border-radius: 999px; background: #fff;
       padding: 0 16px; font-family: inherit; font-size: 15px; color: #4b3d73;
+      cursor: none; /* text inputs get their own native I-beam by default, overriding the inherited none — see .ng-chat-input's own cursor:none for the same override */
     }
     #ng-ccm-modal .ccm-name-input::placeholder, #ng-ccm-modal .ccm-msg-input::placeholder {
       color: rgba(75, 61, 115, 0.4);
@@ -874,6 +883,7 @@ function buildComposeModal({ onSend }) {
   function doSend() {
     const text = msgInput.value.trim();
     if (!text && !selectedSticker) return;
+    SoundManager.playEnter();
     onSend({
       text, rawName: nameInput.value.trim(), tier: selectedTier, sticker: selectedSticker,
     });

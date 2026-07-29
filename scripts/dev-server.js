@@ -28,6 +28,9 @@ const MIME = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ttf': 'font/ttf',
 };
 
 // Shared layer/effect-settings store, backed by a file on disk instead of

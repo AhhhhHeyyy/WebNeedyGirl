@@ -2,6 +2,7 @@ import { StatStore, STAT_RANGE } from './StatStore.js';
 import { spawnNestedScene3Popup, setAngelDCoverActive } from '../layers/nestedScene3PopupSpawner.js';
 import { setHeartsActive, setLoveSpamActive, triggerHeartBurst, configure as configureYandereProto } from '../layers/yandereProtoOverlay.js';
 import { triggerShake } from './screenShake.js';
+import { SoundManager } from './soundManager.js';
 
 // The only module that ever reads raw StatStore values — every visual
 // consumer below (holographic's script.js, retroFilterLayer, the two
@@ -119,6 +120,7 @@ function setTvGlitch(active) {
   if (active === tvGlitchOn) return;
   tvGlitchOn = active;
   ctx.manager.setVisible('tvGlitch', active);
+  SoundManager.setTvGlitchActive(active); // user-requested: swap the looping bgm to the glitch track while active, back while not
   if (active) triggerShake(); // user-requested: shake on the on-edge only, not when it turns back off
 }
 
@@ -130,7 +132,10 @@ function setAngelSwap(active) {
   ctx.manager.setVisible('spineAngelASpine', !active);
   ctx.manager.setVisible('spineAngelDSpine', active);
   setAngelDCoverActive(active); // user-requested: cover the Nested Scene 3 window with opaque #000295 while Angel_D is showing
-  if (active) triggerShake(); // user-requested: shake only on the Angel_A->D swap edge, not the reverse
+  if (active) {
+    triggerShake(); // user-requested: shake only on the Angel_A->D swap edge, not the reverse
+    SoundManager.playChange(); // user-requested: one-shot cue each time the Dark (Angel_D) character triggers
+  }
 }
 
 function onStatChange(s) {

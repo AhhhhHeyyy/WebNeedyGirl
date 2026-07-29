@@ -331,5 +331,18 @@
     const t = e.touches[0]; if (t) moveCursor(t.clientX, t.clientY);
   }, { passive: true });
 </script>
+<script>
+  // User-requested: this cue plays once entering the call screen. Accepting
+  // the call (phoneCallOverlay.js's onAccept) navigates here via a real
+  // location.href change inside a click handler, so autoplay is normally
+  // allowed — the pointerdown/keydown fallback below only matters on browsers
+  // that don't carry that activation across the navigation.
+  const callMusic = new Audio('sound/Angel boring (feat. Aiobahn +81).mp3');
+  callMusic.play().catch(() => {
+    const retry = () => callMusic.play().catch(() => {});
+    document.addEventListener('pointerdown', retry, { once: true });
+    document.addEventListener('keydown', retry, { once: true });
+  });
+</script>
 </body>
 </html>

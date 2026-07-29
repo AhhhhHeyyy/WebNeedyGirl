@@ -16,6 +16,7 @@ import { DialogueDirector } from './core/DialogueDirector.js';
 import { DialogueStore, VALID_LANGS } from './core/DialogueStore.js';
 import { DragTransform } from './core/DragTransform.js';
 import { EDIT_MODE } from './core/editMode.js';
+import { SoundManager } from './core/soundManager.js';
 
 const STORAGE_KEY = 'needygirl-layer-layout';
 const STAT_STORAGE_KEY = 'needygirl-stat-store';
@@ -133,11 +134,11 @@ prewarmRendererPool();
 // siblings under #stage-world (see reconcileZIndex below), not at "10".
 // Left as-is/documented rather than fixed outright — every other z-index
 // tuned below (Lottie's 5/20, chat.chatboard/chat.chatB's 11/12,
-// stickerListLayer's 22, retroFilter/tvGlitch/man/pixelCursor's 25-27) was
-// picked by testing against the app's ACTUAL current stacking, so forcing
-// this one to genuinely take effect would shuffle all of those relative to
-// the Pixi scene at once — a much bigger, untested change than this file
-// signs up for here.
+// stickerListLayer's 22, retroFilter/tvGlitch/man's 25-26, pixelCursor's
+// 5500) was picked by testing against the app's ACTUAL current stacking, so
+// forcing this one to genuinely take effect would shuffle all of those
+// relative to the Pixi scene at once — a much bigger, untested change than
+// this file signs up for here.
 pixiContainer.querySelector('canvas').style.zIndex = '10';
 function reconcileZIndex() {
   const lottieLayer = manager.layers.find(l => l.type === 'lottie');
@@ -153,8 +154,8 @@ function reconcileZIndex() {
   // of the composited scene but got its rows/message bubbles painted over
   // by chat's red/yellow highlighted lines. '13' clears that fixed pair
   // while staying below stickerListLayer's frontmost tier (22) and
-  // retroFilter/tvGlitch/man/pixelCursor's always-on-top tiers (25-27), so
-  // this still loses to those exactly like '5' did.
+  // retroFilter/tvGlitch/man/pixelCursor's always-on-top tiers (25-26,
+  // 5500), so this still loses to those exactly like '5' did.
   lottieContainer.style.zIndex = isFrontmost ? '20' : '13';
 }
 manager.onChange(reconcileZIndex);
@@ -436,6 +437,7 @@ async function boot() {
     const insideFrame1 = frame1 && frame1.sprite.getBounds().contains(px, py);
 
     if (insideFrame1) {
+      SoundManager.playSelect();
       const { x, y } = clientToLogical(e.clientX, e.clientY, stage);
       spawnNestedScene3Popup(x, y, { stage, manager, lottieContainer })
         .catch(err => console.error('Failed to spawn Nested Scene 3 pop-up:', err));
@@ -456,6 +458,7 @@ async function boot() {
     // its own.
     const manLayer = manager.get('man');
     if (manLayer && manLayer.visible) {
+      SoundManager.playSelect();
       manLayer.el.contentWindow?.postMessage({ type: 'ng-man-show', x: px, y: py }, window.location.origin);
     }
   });
@@ -480,6 +483,7 @@ async function boot() {
     loadingScreen.classList.add('hidden');
     loadingScreen.addEventListener('transitionend', () => loadingScreen.remove(), { once: true });
   }
+  SoundManager.startBgm();
 }
 
 boot().catch(err => console.error('Layer init failed:', err));
