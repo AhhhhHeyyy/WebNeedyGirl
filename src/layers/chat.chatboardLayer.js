@@ -571,7 +571,12 @@ function ensureComposeModalStyle() {
 
     #ng-ccm-modal {
       position: fixed; left: 50%; top: 50%;
-      transform: translate(-50%, -50%) scale(calc(var(--ccm-scale, 1) * 0.85));
+      /* --ccm-drag-x/y are raw px, added by the drag handler below (see
+         onWindowPointerDown) — they compose with the %-based centering
+         translate in the same function untouched by --ccm-scale, since
+         scale() sits to the right and only affects what's already been
+         translated, not the translate distance itself. */
+      transform: translate(calc(-50% + var(--ccm-drag-x, 0px)), calc(-50% + var(--ccm-drag-y, 0px))) scale(calc(var(--ccm-scale, 1) * 0.85));
       width: ${CCM_DESIGN_W}px;
       z-index: ${CCM_Z_INDEX};
       font-family: 'NGChatSilver', 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
@@ -580,10 +585,15 @@ function ensureComposeModalStyle() {
       pointer-events: none;
     }
     #ng-ccm-modal.open {
-      transform: translate(-50%, -50%) scale(var(--ccm-scale, 1));
+      transform: translate(calc(-50% + var(--ccm-drag-x, 0px)), calc(-50% + var(--ccm-drag-y, 0px))) scale(var(--ccm-scale, 1));
       opacity: 1;
       pointer-events: auto;
     }
+    /* Dragging (see onWindowPointerDown) skips the opening scale/opacity
+       transition above via .dragging — otherwise every pointermove fights a
+       .32s eased transform transition and the window visibly lags the
+       cursor instead of tracking it 1:1. */
+    #ng-ccm-modal.dragging { transition: none; }
     @media (max-width: ${CCM_MOBILE_BREAKPOINT_PX}px) {
       #ng-ccm-modal { width: ${CCM_MOBILE_DESIGN_W}px; }
     }
@@ -605,7 +615,9 @@ function ensureComposeModalStyle() {
       padding: 0 8px;
       background: linear-gradient(90deg, #d8f0ff 0%, #f6cdf0 50%, #d8f0ff 100%);
       border-bottom: 2px solid #8fd0f2;
+      cursor: grab; /* the whole top 40% of .ccm-window drags — see onWindowPointerDown */
     }
+    #ng-ccm-modal.dragging .ccm-titlebar { cursor: grabbing; }
     #ng-ccm-modal .ccm-titleicon { width: 13px; height: 13px; border-radius: 2px; background: #5b67c7; }
     #ng-ccm-modal .ccm-title { font-size: 14px; font-weight: 700; letter-spacing: .03em; }
     #ng-ccm-modal .ccm-winbtn {
@@ -744,9 +756,50 @@ function buildComposeModal({ onSend }) {
   const cancelBtn = root.querySelector('.ccm-cancel');
   const sendBtn = root.querySelector('.ccm-send');
   const closeBtn = root.querySelector('.ccm-close');
+  const windowEl = root.querySelector('.ccm-window');
 
   let selectedTier = null;
   let selectedSticker = null;
+
+  // Drag-to-reposition (user-requested) — only the top 40% of .ccm-window
+  // (titlebar + the name label/input row right under it) starts a drag, so
+  // the rest of the form (message input, stickers, superchat tiers, actions)
+  // stays purely clickable. Targets that are themselves interactive (the
+  // name input, the titlebar's close button) opt out via the closest()
+  // check below so focusing/clicking them still works normally even though
+  // they fall inside that top 40%.
+  const CCM_DRAG_ZONE_RATIO = 0.4;
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+  let dragState = null;
+
+  function setDragOffset(x, y) {
+    dragOffsetX = x;
+    dragOffsetY = y;
+    root.style.setProperty('--ccm-drag-x', `${x}px`);
+    root.style.setProperty('--ccm-drag-y', `${y}px`);
+  }
+
+  function onDragMove(e) {
+    if (!dragState) return;
+    setDragOffset(dragState.baseX + (e.clientX - dragState.startX), dragState.baseY + (e.clientY - dragState.startY));
+  }
+  function onDragEnd() {
+    dragState = null;
+    root.classList.remove('dragging');
+    window.removeEventListener('pointermove', onDragMove);
+  }
+  function onWindowPointerDown(e) {
+    if (e.target.closest('input, button')) return; // form controls/close button behave normally
+    const rect = windowEl.getBoundingClientRect();
+    if (!rect.height || (e.clientY - rect.top) / rect.height > CCM_DRAG_ZONE_RATIO) return;
+    e.preventDefault(); // suppresses touch-scroll/selection while dragging
+    dragState = { startX: e.clientX, startY: e.clientY, baseX: dragOffsetX, baseY: dragOffsetY };
+    root.classList.add('dragging');
+    window.addEventListener('pointermove', onDragMove);
+    window.addEventListener('pointerup', onDragEnd, { once: true });
+  }
+  windowEl.addEventListener('pointerdown', onWindowPointerDown);
 
   function updateSendEnabled() {
     sendBtn.disabled = !msgInput.value.trim() && !selectedSticker;
@@ -874,6 +927,7 @@ function buildComposeModal({ onSend }) {
   function open() {
     if (isOpen) return;
     isOpen = true;
+    setDragOffset(0, 0); // re-center — a drag left over from the last time this modal was open shouldn't carry forward
     applyFitScale(); // re-measure — draft content length affects naturalH
     backdrop.classList.add('open');
     requestAnimationFrame(() => {
@@ -887,6 +941,7 @@ function buildComposeModal({ onSend }) {
     window.removeEventListener('keydown', onWindowKeydown);
     window.removeEventListener('resize', applyFitScale);
     window.removeEventListener('orientationchange', applyFitScale);
+    window.removeEventListener('pointermove', onDragMove); // in case destroy() lands mid-drag
     root.remove();
     backdrop.remove();
   }
