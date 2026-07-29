@@ -604,6 +604,25 @@ function ensureComposeModalStyle() {
       box-shadow: 0 18px 50px rgba(20, 10, 40, 0.45);
       background: #f3e9fb;
       color: #4b3d73;
+      /* Must be set via CSS ahead of time, not toggled in JS on pointerdown —
+         the browser decides whether a touch is a scroll/zoom gesture at the
+         moment of first contact using whatever touch-action is ALREADY in
+         effect, before any event handler runs. Relying on e.preventDefault()
+         alone (as onWindowPointerDown below still does, for older browsers)
+         left mobile Chrome/Safari spending their scroll-disambiguation delay
+         on every drag first, which read as laggy/unresponsive. Re-enabled
+         below on the few children that actually need native touch handling
+         (text cursor placement, msg-hint's own scroll). */
+      touch-action: none;
+      -webkit-user-select: none; user-select: none;
+      -webkit-touch-callout: none; /* iOS long-press callout would otherwise fight the drag */
+    }
+    #ng-ccm-modal .ccm-name-input,
+    #ng-ccm-modal .ccm-msg-input,
+    #ng-ccm-modal .ccm-msg-hint {
+      touch-action: auto;
+      -webkit-user-select: auto; user-select: auto;
+      -webkit-touch-callout: default;
     }
     /* Same "retro OS window" chrome idiom phoneCallOverlay.js's own modal
        uses (titlebar + fake min/close buttons) — reused here so the app's
