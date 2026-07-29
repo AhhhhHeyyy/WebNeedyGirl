@@ -13,14 +13,16 @@ import { StatStore } from './StatStore.js';
 
 const LANG_STORAGE_KEY = 'needygirl-dialogue-lang';
 export const VALID_LANGS = ['zh', 'en', 'ja', 'ko'];
-const DEFAULT_LANG = 'zh';
+const DEFAULT_LANG = 'en';
 const DEFAULT_HOLD_MS = 6000;
 
 // "選好，否則自動套用" — the loading screen's language picker (see main.js's
 // wireLoadingLangPicker) is the one deliberate choice point; anyone who
 // doesn't touch it while it's up gets the browser's own reported language
-// instead of a hardcoded default, so a JP/KO/EN visitor who never clicks
-// anything still lands on their own language rather than Chinese.
+// instead of a hardcoded default, so a ZH/JP/KO visitor who never clicks
+// anything still lands on their own language rather than English. DEFAULT_LANG
+// itself only fires for visitors whose browser languages match none of the
+// four (e.g. French, German) — English as the international fallback.
 function detectBrowserLang() {
   const candidates = navigator.languages?.length ? navigator.languages : [navigator.language];
   for (const tag of candidates) {
