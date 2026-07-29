@@ -16,7 +16,7 @@ export const STAT_RANGE = {
   followers: [0, 9_999_999],
 };
 
-const INITIAL_STATS = { affection: 0, stress: 0, darkness: 0, followers: 0 };
+const INITIAL_STATS = { affection: 30, stress: 0, darkness: 0, followers: 0 };
 
 function clampStat(key, value) {
   const [lo, hi] = STAT_RANGE[key];
