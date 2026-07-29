@@ -43,7 +43,11 @@ function wireLoadingLangPicker() {
     if (!VALID_LANGS.includes(btn.dataset.lang)) return;
     btn.addEventListener('click', () => DialogueStore.setLang(btn.dataset.lang));
   });
-  DialogueStore.on('change', (snap) => sync(snap.lang));
+  // Keeps <html lang> truthful to what's actually on screen (index.html
+  // hardcodes "en" for the pre-JS paint) — belt-and-suspenders alongside the
+  // notranslate meta tag, since some translate/accessibility tooling reads
+  // lang directly instead of honoring that opt-out.
+  DialogueStore.on('change', (snap) => { sync(snap.lang); document.documentElement.lang = snap.lang; });
 }
 wireLoadingLangPicker();
 

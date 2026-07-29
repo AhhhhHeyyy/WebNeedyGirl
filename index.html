@@ -1,8 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" translate="no">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- The dialogue system already ships hand/fan-translated zh/en/ja/ko text
+     picked via DialogueStore (see src/core/DialogueStore.js) — Chrome's
+     built-in Google Translate bar would otherwise still offer to machine-
+     translate on top of that, which is worse than the authored text. -->
+<meta name="google" content="notranslate">
 <!-- Opts out of Android/Chrome's forced-dark auto-theming, which otherwise
      repaints the whole page (including Pixi canvases/images) with a color-
      inversion algorithm — an explicit background alone doesn't stop that. -->
