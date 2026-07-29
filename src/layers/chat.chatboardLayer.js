@@ -4,7 +4,7 @@ import { StatStore } from '../core/StatStore.js';
 import { DialogueStore } from '../core/DialogueStore.js';
 import { matchMessage, KEYWORD_CATEGORIES } from '../core/keywordTable.js';
 import { triggerAscensionFlood } from './yandereProtoOverlay.js';
-import { saveComment } from '../../shared/firebase.js';
+import { saveComment, loadComments } from '../../shared/firebase.js';
 
 // chat.chatboard (UI/chat/Chatboard.png) is the frame's lavender FILL —
 // the actual message list + input bar seen in the reference mockup is real
@@ -914,6 +914,22 @@ function buildOverlay() {
   thumb.className = 'ng-chat-scrollbar-thumb';
   track.appendChild(thumb);
   messagesWrap.appendChild(track);
+
+  // Restore past comments (shared/firebase.js) after the local seed lines —
+  // async by nature, so these rows pop in a beat after the seed messages
+  // rather than blocking first paint on a network round-trip. Reconstructs
+  // the same `kind`/name-fallback/sticker-file mapping performSend() below
+  // applies to a live send, so a restored row renders identically to how it
+  // looked the moment it was originally sent.
+  loadComments().then((comments) => {
+    for (const c of comments) {
+      const displayName = c.name || (ANONYMOUS_LABEL[DialogueStore.getLang()] ?? ANONYMOUS_LABEL.en);
+      const kind = c.scColor ? `sc-${c.scColor}` : undefined;
+      const stickerFile = c.sticker ? STICKERS.find((s) => s.id === c.sticker)?.file : undefined;
+      addRow(messages, c.text, kind, displayName, stickerFile);
+    }
+    updateScrollbar(messages, thumb);
+  });
 
   el.appendChild(messagesWrap);
   messages.addEventListener('scroll', () => updateScrollbar(messages, thumb));

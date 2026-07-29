@@ -4,6 +4,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import {
   getFirestore, collection, addDoc, serverTimestamp,
+  query, orderBy, limit, getDocs,
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 import { firebaseConfig } from './firebase-config.js';
 
@@ -42,5 +43,30 @@ export async function saveComment({
     });
   } catch (err) {
     console.warn('[firebase] failed to save comment', err);
+  }
+}
+
+// How many past comments a fresh page load restores — bounded so a
+// long-running stream's log can't turn every reload into an ever-growing
+// read.
+const HISTORY_LIMIT = 50;
+
+// Reads the most recent comments back out so the chatboard doesn't start
+// empty on every reload — same fire-and-forget contract as saveComment():
+// no db (unconfigured) or a failed read both just resolve to an empty list
+// instead of throwing, so a misconfigured/offline backend never blocks the
+// local chat UI from showing its own seed messages.
+export async function loadComments() {
+  if (!db) return [];
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'comments'), orderBy('createdAt', 'desc'), limit(HISTORY_LIMIT)),
+    );
+    // Firestore gives newest-first (needed for the limit to keep the most
+    // recent N) — reverse back to chronological order for display.
+    return snap.docs.map((doc) => doc.data()).reverse();
+  } catch (err) {
+    console.warn('[firebase] failed to load comments', err);
+    return [];
   }
 }
