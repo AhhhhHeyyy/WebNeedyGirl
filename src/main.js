@@ -14,6 +14,8 @@ import { EffectDirector } from './core/EffectDirector.js';
 import { followerTicker } from './core/followerTicker.js';
 import { DialogueDirector } from './core/DialogueDirector.js';
 import { DialogueStore, VALID_LANGS } from './core/DialogueStore.js';
+import { DragTransform } from './core/DragTransform.js';
+import { EDIT_MODE } from './core/editMode.js';
 
 const STORAGE_KEY = 'needygirl-layer-layout';
 const STAT_STORAGE_KEY = 'needygirl-stat-store';
@@ -88,6 +90,26 @@ function wireDarkModeHint() {
   });
 }
 wireDarkModeHint();
+
+// Settings panel (LAYERS list, Save/Reset, popup tuning, stat debug) and
+// on-canvas drag/resize (see DragTransform.js's editEnabled) are dev-only
+// editing tools, off by default — see README.md's "開發者模式" for how to
+// turn them back on. Gate the toggle wiring itself (not just CSS) so a
+// public visitor can't reach the panel even by guessing the DOM structure.
+DragTransform.editEnabled = EDIT_MODE;
+function wireEditModeUi() {
+  const panelToggle = document.getElementById('panel-toggle');
+  if (!EDIT_MODE) {
+    if (panelToggle) panelToggle.style.display = 'none';
+    return;
+  }
+  const panel = document.getElementById('panel');
+  panelToggle.onclick = () => panel.classList.toggle('closed');
+  document.getElementById('popup-tuning-close').onclick = () => {
+    document.getElementById('popup-tuning-sec').style.display = 'none';
+  };
+}
+wireEditModeUi();
 
 const stage = new Stage(pixiContainer);
 const manager = new LayerManager();

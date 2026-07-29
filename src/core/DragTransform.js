@@ -5,6 +5,12 @@
 const HANDLE_SIZE = 14;
 
 export class DragTransform {
+  // Flipped on by main.js at boot iff editMode.js's EDIT_MODE resolved true —
+  // false is the shipped default, so a public visitor's pointerdown on any
+  // sprite is a no-op (see _startDrag/_startScale below) instead of quietly
+  // rearranging the scene.
+  static editEnabled = false;
+
   constructor(sprite, stage, { onChange } = {}) {
     this.sprite = sprite;
     this.stage = stage;
@@ -84,7 +90,7 @@ export class DragTransform {
   }
 
   _startDrag(e) {
-    if (this.locked) return;
+    if (this.locked || !DragTransform.editEnabled) return;
     const scale = this.stage.scaleFactor;
     this._dragState = {
       mode: 'move',
@@ -98,7 +104,7 @@ export class DragTransform {
   }
 
   _startScale(e) {
-    if (this.locked) return;
+    if (this.locked || !DragTransform.editEnabled) return;
     e.stopPropagation();
     const scale = this.stage.scaleFactor;
     const dx = this.corner.x - this.sprite.x;

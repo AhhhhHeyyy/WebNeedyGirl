@@ -6,16 +6,17 @@
 ## 目錄
 
 1. [快速開始](#1-快速開始)
-2. [整體架構](#2-整體架構)
-3. [資料夾結構](#3-資料夾結構)
-4. [圖層系統核心（src/core）](#4-圖層系統核心srccore)
-5. [三種圖層類型（src/layers）](#5-三種圖層類型srclayers)
-6. [新增/刪除素材：manifest 工作流程](#6-新增刪除素材manifest-工作流程)
-7. [新增一個「自帶效果」的圖層](#7-新增一個自帶效果的圖層)
-8. [幫某個素材加自訂邏輯](#8-幫某個素材加自訂邏輯)
-9. [儲存 / 重置佈局](#9-儲存--重置佈局)
-10. [效能（手機/平板）](#10-效能手機平板)
-11. [已知限制](#11-已知限制)
+2. [開發者模式（設定面板／拖曳）](#2-開發者模式設定面板拖曳)
+3. [整體架構](#3-整體架構)
+4. [資料夾結構](#4-資料夾結構)
+5. [圖層系統核心（src/core）](#5-圖層系統核心srccore)
+6. [三種圖層類型（src/layers）](#6-三種圖層類型srclayers)
+7. [新增/刪除素材：manifest 工作流程](#7-新增刪除素材manifest-工作流程)
+8. [新增一個「自帶效果」的圖層](#8-新增一個自帶效果的圖層)
+9. [幫某個素材加自訂邏輯](#9-幫某個素材加自訂邏輯)
+10. [儲存 / 重置佈局](#10-儲存--重置佈局)
+11. [效能（手機/平板）](#11-效能手機平板)
+12. [已知限制](#12-已知限制)
 
 ---
 
@@ -31,7 +32,7 @@ node scripts/dev-server.js
 ```
 
 **推薦用這個內建的小型 Node 伺服器**，因為它每次收到 `manifest.json` 的請求都會重新掃描
-`UI/`（見第 6 節），等於「加減素材、重新整理頁面就好」，不用再手動跑 `scan-assets.js`。
+`UI/`（見第 7 節），等於「加減素材、重新整理頁面就好」，不用再手動跑 `scan-assets.js`。
 如果不想用 Node，也可以用其他任何靜態伺服器（例如 `python -m http.server 8080` 或
 `npx serve -l 8080`），但這樣每次改動 `UI/` 之後都要記得手動跑一次
 `node scripts/scan-assets.js` 才會反映到網頁上。
@@ -42,9 +43,29 @@ node scripts/dev-server.js
 http://localhost:8080/index.html
 ```
 
-右側齒輪圖示可以開關「LAYERS」面板：勾選框控制顯示/隱藏、▲▼ 排序、點圖層名稱會跳出
-X/Y/Scale/Rotate 滑桿，也可以直接在畫面上拖曳選取中的圖層。
+「LAYERS」設定面板（右上齒輪圖示）跟畫面上直接拖曳/縮放圖層的功能，預設是**關閉**的——
+公開部署的網站只會是一般訪客看到的乾淨畫面。要開啟編輯功能，看下一節。
 
+## 2. 開發者模式（設定面板／拖曳）
+
+齒輪圖示、畫面上拖曳/縮放圖層、方向鍵微調位置，這些編輯用的功能預設全部關閉（見
+`src/core/editMode.js`），一般訪客（包含公開部署的網址）看到的就只是純觀看模式，不會
+不小心把圖層拖走。
+
+**開啟方式**：瀏覽器網址列後面加上 `?edit=1` 開一次即可，例如：
+
+```
+http://localhost:8080/index.html?edit=1
+```
+
+這個設定會存進瀏覽器的 `localStorage`（key: `needygirl-edit-mode`），之後同一台瀏覽器
+重新整理、不帶參數的網址也會繼續保持開啟，不用每次都加 `?edit=1`。要關掉的話，網址後面
+加 `?edit=0` 開一次即可（同樣會記住）。
+
+開啟後才會出現：
+
+- 右上齒輪圖示，可以開關「LAYERS」面板：勾選框控制顯示/隱藏、▲▼ 排序、點圖層名稱會跳出
+  X/Y/Scale/Rotate 滑桿，也可以直接在畫面上拖曳選取中的圖層。
 - **🔓/🔒 鎖定圖層**：每一列旁邊的鎖頭按鈕可以鎖定該圖層——鎖定後這個圖層不會被滑鼠拖曳
   或縮放把手影響（連同滑桿跟方向鍵微調也一併停用），適合排好版位後防止手滑誤動。再點一次
   解鎖即可恢復可拖曳/可縮放。鎖定狀態會跟著版位一起存進「💾 Save Layout」。
@@ -52,7 +73,7 @@ X/Y/Scale/Rotate 滑桿，也可以直接在畫面上拖曳選取中的圖層。
   可以每次移動 1px，按住 Shift 再按方向鍵則是每次 10px，方便做像素級的微調。輸入框/滑桿
   正在輸入時方向鍵不會被搶走；圖層鎖定時方向鍵也不會生效。
 
-## 2. 整體架構
+## 3. 整體架構
 
 ```
 z-index 0    #bg-effect-layer   ← 自帶效果的背景特效（iframe，例如 UI/holographic）
@@ -73,7 +94,7 @@ z-index 20+  #panel             ← 圖層管理面板
 資料夾（真實發生過一次），manifest 一消失、整個網頁就變空白。放在 `UI/` 之外、你不會去動的
 地方，就不會再被這樣誤傷。
 
-## 3. 資料夾結構
+## 4. 資料夾結構
 
 ```
 WebNeedyGirl/
@@ -83,8 +104,8 @@ WebNeedyGirl/
   shared/
     panel.css              ← 面板/滑桿/按鈕的共用樣式，被 index.html 跟每個效果資料夾共用
   UI/                       ← 所有素材放這裡（唯一需要手動維護的地方）
-    SpineAngel.spine.gif    ← 純圖片（PNG/JPG/GIF/WEBP，動畫 GIF 見第 10 節）
-    holographic/             ← 自帶效果的資料夾（有 index.html，見第 7 節）
+    SpineAngel.spine.gif    ← 純圖片（PNG/JPG/GIF/WEBP，動畫 GIF 見第 11 節）
+    holographic/             ← 自帶效果的資料夾（有 index.html，見第 8 節）
       index.html
       style.css
       script.js
@@ -106,18 +127,18 @@ WebNeedyGirl/
       BaseLottieLayer.js        ← 通用引擎：Lottie 動畫圖層
       BaseIframeLayer.js        ← 通用引擎：自帶效果的 iframe 圖層
       GroupLayer.js            ← 通用引擎：資料夾分組圖層（內部用 BaseImageLayer 當子圖層）
-      （之後若某素材需要自訂邏輯，寫在這裡，見第 8 節）
+      （之後若某素材需要自訂邏輯，寫在這裡，見第 9 節）
     ui/
       LayerPanel.js            ← 「LAYERS」面板：可見性/排序/滑桿 UI
 ```
 
-## 4. 圖層系統核心（src/core）
+## 5. 圖層系統核心（src/core）
 
 - **`Stage.js`**：建立一個 Pixi.Application，內部用**固定邏輯座標** `LOGICAL_W=1920,
   LOGICAL_H=1080`。所有圖片圖層的 x/y/scale 都以這個座標系記錄；換螢幕尺寸時只縮放整個根容器
   （`Math.min(innerWidth/1920, innerHeight/1080)`），不必重算每個圖層的座標——這就是 RWD
   適應的核心公式。DPR（螢幕解析度）上限透過 `shared/device-perf.js` 依螢幕寬度動態決定
-  （見第 10 節），避免高解析度手機/平板讓多個 GPU context 一起爆量。
+  （見第 11 節），避免高解析度手機/平板讓多個 GPU context 一起爆量。
 
 - **`LayerManager.js`**：所有圖層（不管是圖片/Lottie/iframe）的統一 registry。提供
   `add/remove/reorder/setVisible/setTransform`，以及 `getSnapshot()/applySnapshot()`
@@ -127,11 +148,11 @@ WebNeedyGirl/
 - **`DragTransform.js`**：滑鼠拖曳移動 + 四角把手縮放的共用邏輯，掛在任何 Pixi Sprite 上就能
   互動。所有圖片圖層都共用同一份實作，不必每個素材各自重寫拖曳程式碼。
 
-## 5. 四種圖層類型（src/layers）
+## 6. 四種圖層類型（src/layers）
 
 | 類型 | 引擎 | 用在哪 | 支援拖曳/縮放？ |
 |---|---|---|---|
-| `image` | `BaseImageLayer.js` | UI/ 裡的圖片檔（含動畫 GIF，見第 10 節） | 可以 |
+| `image` | `BaseImageLayer.js` | UI/ 裡的圖片檔（含動畫 GIF，見第 11 節） | 可以 |
 | `lottie` | `BaseLottieLayer.js` | UI/ 裡的 Lottie JSON | 可以（用 CSS transform） |
 | `effect` | `BaseIframeLayer.js` | UI/ 裡「自帶 index.html」的資料夾 | 不行，只有顯示/隱藏 |
 | `group` | `GroupLayer.js` | UI/ 裡「沒有 index.html」的資料夾 | 整組可以，組內每張圖也各自可以 |
@@ -145,7 +166,7 @@ WebNeedyGirl/
 是獨立的 DOM 元件、沒辦法變成 Pixi 容器的子物件，會被拉出來變成一個獨立的頂層 `lottie` 圖層
 （label 會顯示成「資料夾名 / 檔名」），不會跟著資料夾一起拖曳縮放。
 
-## 6. 新增/刪除素材：manifest 工作流程
+## 7. 新增/刪除素材：manifest 工作流程
 
 根目錄的 `manifest.json` 是 `main.js` 唯一讀取的清單，**不要手動編輯，也不要搬進 `UI/` 裡**。
 
@@ -166,9 +187,9 @@ node scripts/scan-assets.js
 不管哪種方式，掃描邏輯都一樣，它會：
 - 把 `UI/` 裡每一張圖片（`.png/.jpg/.jpeg/.gif/.webp`）列進 `images`
 - 把每個 `.json` 檔列進 `lottie`
-- 把每個「裡面有 `index.html`」的子資料夾列進 `effects`（見第 7 節）
+- 把每個「裡面有 `index.html`」的子資料夾列進 `effects`（見第 8 節）
 - 把每個「裡面沒有 `index.html`」的子資料夾列進 `groups`，並掃描該資料夾內的圖片/Lottie
-  （見第 5 節的 `group` 類型）
+  （見第 6 節的 `group` 類型）
 - 檔名自動轉成 `id`（給程式用）跟 `label`（給面板顯示用），例如 `Group 14.png` → id
   `group14`、label `Group 14`；資料夾內的檔案 id 會加上資料夾名稱當前綴避免撞名
   （例如 `heading/button.png` → id `heading.button`）
@@ -179,7 +200,7 @@ node scripts/scan-assets.js
 > 如果想要某張圖有更好看的顯示名稱，把檔名取好一點就好（label 是直接從檔名轉出來的，
 > 例如 `heading-1.png` 會變成 `Heading-1`）。
 
-## 7. 新增一個「自帶效果」的圖層
+## 8. 新增一個「自帶效果」的圖層
 
 像 `UI/holographic/` 這種有自己 shader、自己控制面板的完整效果，慣例是：
 
@@ -194,7 +215,7 @@ UI/我的新效果/
 這個資料夾也可以整個複製到別的專案重用，因為它完全自包含，不依賴專案其他地方的程式碼
 （只吃 `shared/panel.css` 這一份共用樣式，換專案時把這個檔案也一起複製過去即可）。
 
-## 8. 幫某個素材加自訂邏輯
+## 9. 幫某個素材加自訂邏輯
 
 大部分素材只是單純顯示（用第 5 節的通用引擎就夠），但如果某個素材要加自訂行為
 （例如：遮罩、眨眼互動、跟著滑鼠動），做法是：
@@ -210,13 +231,13 @@ UI/我的新效果/
 
 完全不用改 `main.js`。
 
-## 9. 儲存 / 重置佈局
+## 10. 儲存 / 重置佈局
 
 面板最下面的「💾 Save Layout」會把目前所有圖層的順序/顯示狀態/位置/縮放/旋轉存進瀏覽器的
 `localStorage`；重新整理頁面會自動讀回上次存的佈局。「↺ Reset」清掉存檔，還原成程式預設的
 初始安排。
 
-## 10. 效能（手機/平板）
+## 11. 效能（手機/平板）
 
 因為最終會在手機/平板上播放，系統內建幾個針對性的效能優化：
 
@@ -247,7 +268,7 @@ UI/我的新效果/
   戳圖層狀態（例如 `__needyGirl.manager.layers` 列出所有圖層、`.sprite.playing` 看 GIF 是否在播放）；
   `window.getPerfTier()` 可以查目前的效能分級。
 
-## 11. 已知限制
+## 12. 已知限制
 
 - **localStorage 只在同一台電腦、同一個瀏覽器有效**——換瀏覽器/換電腦/清瀏覽器資料都會不見。
   如果之後需要「存成檔案帶著走」，可以再加匯出/匯入 JSON 的功能。
