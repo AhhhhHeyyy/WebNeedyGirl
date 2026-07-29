@@ -25,6 +25,18 @@ html, body {
   position: absolute;
   opacity: 0;
   transition: opacity 0.35s ease;
+  /* Panel's own scaleX/scaleY slider (stickerListLayer.js's setTransform) is
+     applied as a transform on this box in script.js — default center-origin
+     scaling shrinks INWARD FROM BOTH SIDES, which silently pulls the row's
+     visible left edge back toward the middle even after its computed
+     left/x has already been pushed as far left as the boarding safe-area
+     clamp allows (user report: "X already at max-left, still not far
+     enough" — the position was correct, the centered scale-down was what
+     was eating the margin back). Left-anchoring the scale origin means
+     scaling down shrinks the box toward its own left edge instead, so the
+     leftmost icon stays exactly where left/x already placed it.
+  */
+  transform-origin: left center;
 }
 #sticker-list.positioned { opacity: 1; }
 
@@ -41,11 +53,22 @@ html, body {
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: space-evenly;
-  /* Asymmetric left/right padding (was even 6%/6%) nudges the whole row of
-     5 icons left within the board's fixed box — space-evenly still spaces
-     them out evenly, just within a region shifted toward the left edge. */
-  padding: 11% 9% 11% 3%;
+  /* flex-start (was space-evenly) — user-requested: the row must always
+     read as flush against Frame 1's own left edge, not spread out across
+     this box's full width (which spans Frame 1's entire width, not just
+     the icons' own footprint — see stickerListLayer.js's screenW). With
+     space-evenly the 5th icon's position depended on the box's total
+     width, drifting rightward on a wider frame1 until it visually crossed
+     into the stat HUD sitting further right; packing from the start edge
+     instead keeps all 5 icons anchored to the same edge stickerListLayer.js
+     already anchors this box's own left/x to (Frame 1's left edge, see
+     FRAME1_GAP_FRACTION's sibling anchor comment). */
+  justify-content: flex-start;
+  gap: 2%;
+  /* Right padding dropped (was 9%, only meaningful for space-evenly) — top/
+     bottom kept for vertical breathing room, left kept minimal just so the
+     first icon doesn't render flush against the very edge. */
+  padding: 11% 0 11% 1%;
 }
 
 /* Narrow-viewport fallback (stickerListLayer.js's _reposition() "narrow"

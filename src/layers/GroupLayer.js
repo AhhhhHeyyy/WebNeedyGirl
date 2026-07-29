@@ -28,7 +28,7 @@ export class GroupLayer {
     this.onChange = null; // wired by LayerManager.add()
   }
 
-  static async create({ id, label, stage, folder, images }) {
+  static async create({ id, label, stage, folder, images, manager }) {
     const group = new GroupLayer({ id, label, stage });
 
     // Children live one level deeper than the real stage: their effective
@@ -46,8 +46,13 @@ export class GroupLayer {
     };
 
     group.children = await Promise.all((images || []).map(async (entry) => {
+      // `manager` (optional — only main.js's top-level createLayer() passes
+      // one) lets a group child's own custom module (see live.3LineLayer.js)
+      // look up ANOTHER top-level layer (e.g. frame1) the same way a
+      // top-level custom module already can — otherwise a child nested in a
+      // group has no way to react to anything outside its own group at all.
       const opts = {
-        id: entry.id, label: entry.label, src: `${folder}/${entry.file}`, stage: childStage, x: 0, y: 0, scale: 1,
+        id: entry.id, label: entry.label, src: `${folder}/${entry.file}`, stage: childStage, x: 0, y: 0, scale: 1, manager,
       };
       if (entry.module) {
         // entry.module is "layers/<id>Layer.js" (relative to src/, see

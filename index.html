@@ -161,12 +161,15 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
   #panel-toggle, #panel { display: none; }
 }
 
-/* Portrait phone/tablet: block the composed scene with a "please rotate"
-   prompt instead of trying to fake landscape with a CSS rotation — a real
-   transform would desync Pixi's pointer/hit-testing math from the visuals
-   (it assumes an unrotated canvas). This just waits for the browser to
-   report an actual landscape viewport, so nothing about the coordinate
-   system needs to change at all. */
+/* Portrait: block the composed scene with a "please rotate" prompt instead
+   of trying to fake landscape with a CSS rotation — a real transform would
+   desync Pixi's pointer/hit-testing math from the visuals (it assumes an
+   unrotated canvas). This just waits for the browser to report an actual
+   landscape viewport, so nothing about the coordinate system needs to
+   change at all. User-requested "當偵測到螢幕為直立(即高>寬)則顯示橫向提示"
+   — keyed on orientation alone now (was additionally gated on
+   `max-width: 1024px`, so a portrait window/monitor wider than that still
+   fell through to the squished desktop layout instead of getting the hint). */
 #rotate-prompt {
   display: none;
   position: fixed; inset: 0; z-index: 9999;
@@ -181,7 +184,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
   0%, 100% { transform: rotate(0deg); }
   50% { transform: rotate(90deg); }
 }
-@media (orientation: portrait) and (max-width: 1024px) {
+@media (orientation: portrait) {
   #rotate-prompt { display: flex; }
 }
 </style>

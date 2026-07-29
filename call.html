@@ -9,6 +9,20 @@
     margin: 0; width: 100%; height: 100%; overflow: hidden;
     background: #16141f url('Bg_stream_(1).png') no-repeat center center / cover;
     font-family: 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    /* This is a separate standalone page (not part of the main SPA's Pixi/
+       layer stack — see phoneCallOverlay.js's comment on why), so it doesn't
+       inherit index.html's #stage-area rule that hides the real OS pointer
+       for pixelCursorLayer.js. Hiding it here too keeps the custom pixel
+       cursor (added below) as the only pointer shown, instead of both
+       drawing on top of each other. */
+    cursor: none;
+  }
+  /* Same custom cursor sprite as UI/pixelCursor/style.css's #cursor-sprite —
+     positioned via plain mousemove below since this page has no pixelCursorLayer
+     forwarding a pointer in, and needs no ghost-trail/settings panel of its own. */
+  #call-cursor {
+    position: fixed; top: 0; left: 0; z-index: 10001; pointer-events: none;
+    image-rendering: pixelated; will-change: transform; display: none;
   }
   @font-face {
     font-family: 'Silver';
@@ -77,7 +91,9 @@
      markup/copy/animation) — user-requested "也要要求橫屏": the cam window
      is wide-format (16:9) and this standalone page has no fallback layout
      for portrait, so block it the same way the main app already does rather
-     than letting the window get squeezed. */
+     than letting the window get squeezed. Keyed on orientation alone (see
+     index.html's own #rotate-prompt rule for why the `max-width: 1024px`
+     gate was dropped — user-requested "當偵測到螢幕為直立(即高>寬)則顯示橫向提示"). */
   #rotate-prompt {
     display: none;
     position: fixed; inset: 0; z-index: 9999;
@@ -92,7 +108,7 @@
     0%, 100% { transform: rotate(0deg); }
     50% { transform: rotate(90deg); }
   }
-  @media (orientation: portrait) and (max-width: 1024px) {
+  @media (orientation: portrait) {
     #rotate-prompt { display: flex; }
   }
   #cam-window-inner {
@@ -279,6 +295,40 @@
     })
     .catch(() => { content.classList.add('no-video'); });
   if (!navigator.mediaDevices?.getUserMedia) content.classList.add('no-video');
+</script>
+<script>
+  // Custom pixel cursor (baked in UI/pixelCursor/cursor.webm — see
+  // scripts/bake-pixel-cursor.js) standing in for the real OS pointer, same
+  // as the rest of the game (index.html's #stage-area). Baked at native
+  // COLS x ROWS resolution (one video pixel per bitmap cell), so its
+  // on-screen size is derived from videoWidth/videoHeight once metadata
+  // loads rather than duplicating the bitmap's cell counts here.
+  const CURSOR_CELL_CSS = 2, CURSOR_SCALE = 1.5; // matches pixelCursor's BASE_CELL_CSS/default V.scale
+  const cursorSprite = document.createElement('video');
+  cursorSprite.id = 'call-cursor';
+  cursorSprite.src = 'UI/pixelCursor/cursor.webm';
+  cursorSprite.muted = true;
+  cursorSprite.loop = true;
+  cursorSprite.playsInline = true;
+  cursorSprite.autoplay = true;
+  cursorSprite.addEventListener('loadedmetadata', () => {
+    cursorSprite.style.width = (cursorSprite.videoWidth * CURSOR_CELL_CSS * CURSOR_SCALE) + 'px';
+    cursorSprite.style.height = (cursorSprite.videoHeight * CURSOR_CELL_CSS * CURSOR_SCALE) + 'px';
+  });
+  document.body.appendChild(cursorSprite);
+  cursorSprite.play().catch(() => {}); // autoplay can be deferred until the first user gesture on some browsers; harmless if so
+
+  // Arrow's hotspot is its top-left tip (row 0, col 0), matching a normal OS
+  // cursor's hotspot convention — so translating straight to the pointer
+  // position lands the tip exactly on it, no offset needed.
+  function moveCursor(x, y) {
+    cursorSprite.style.display = 'block';
+    cursorSprite.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  }
+  window.addEventListener('mousemove', (e) => moveCursor(e.clientX, e.clientY));
+  window.addEventListener('touchmove', (e) => {
+    const t = e.touches[0]; if (t) moveCursor(t.clientX, t.clientY);
+  }, { passive: true });
 </script>
 </body>
 </html>

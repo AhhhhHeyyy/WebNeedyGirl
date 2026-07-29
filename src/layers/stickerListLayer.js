@@ -1,6 +1,7 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
 import { StatStore } from '../core/StatStore.js';
 import { triggerPhoneCall } from './phoneCallOverlay.js';
+import { clampIntoBoardingSafeArea, BOARDING_SAFE_PADDING_U } from '../core/boardingSafeArea.js';
 
 // Renders the 5 clickable sticker icons on top of the "listStickers" board
 // (UI/list-stickers.png, see listStickersLayer.js) plus their click-to-spawn
@@ -61,6 +62,36 @@ const DEAD_ZONE_PADDING_PX = 28;
 // snapping to the wrong neighbor.
 const SNAP_RADIUS_PX = 30;
 
+// User-requested: the horizontal row's own SIZE, not just its position, has
+// to be derived from Frame 1's live box too — the previous fix only moved
+// the row's anchor point to Frame 1 but still sized it off the listStickers
+// board sprite's own getBounds(). mobileWiden.js stretches Frame 1's width
+// (scale.x) on narrow/short viewports but never touches the listStickers
+// board at all, so the row's left edge tracked Frame 1 correctly while its
+// WIDTH stayed frozen at the board's own unstretched size — the two visibly
+// drifted apart instead of resizing together the way the stat HUD (which
+// sizes itself off frame1Layer.js's own `fb.width`, see _repositionStatHud)
+// already does.
+// 0.55, not 1 (same width as Frame 1's own live box) — this used to be 1
+// back when the sticker row and the stat HUD were two independently
+// positioned, freely OVERLAPPING absolute boxes (icons only ever filled
+// their own left-anchored slice of that box, so a box spanning the entire
+// frame width never visually collided with the hud sitting further right
+// within that same span). Now that the two are real flex siblings (user-
+// requested — see frame1Layer.js's .ng-substat-row), their widths ADD
+// instead of overlapping: at 1, the icon row's own footprint alone (~94% of
+// this fraction, see the padding/gap math in _reposition()) left the stat
+// hud with ~0 width to claim, and it visually vanished entirely (user
+// report: "屬性表沒看到"). 0.55 leaves comfortable room for the hud's own
+// WIDTH_FRACTION (0.4 of Frame 1's width, see frame1Layer.js) plus the gap
+// between them.
+const HORIZONTAL_ROW_WIDTH_FRACTION = 0.55;
+
+// Fraction of the horizontal row's own width an icon occupies (mirrors
+// UI/stickerList/style.css's `.sticker-item { width: 17% }` — the two can't
+// literally share a constant across files, so keep them in sync by hand).
+const ICON_WIDTH_FRACTION = 0.17;
+
 // Fraction of the vertical column's own width an icon occupies in narrow
 // mode (mirrored in UI/stickerList/style.css's `#sticker-row.vertical
 // .sticker-item` rule — the two can't literally share a constant across
@@ -80,6 +111,18 @@ const NARROW_MARGIN_FACTOR = 1.15;
 // fewer of the margin's other uses. Purely a mobile affordance; the
 // horizontal row (desktop/wide viewports) is untouched.
 const MOBILE_ICON_SCALE = 1.5;
+
+// Floor for the icons' own rendered pixel size (width AND height together —
+// style.css's `.sticker-item` is `aspect-ratio: 1/1` sized purely off a %
+// of the row's own box WIDTH, see _reposition()'s horizontal branch) once
+// getStatRowAvailH() (frame1Layer.js) caps them down on a vertically cramped
+// viewport. Same "prefer legible/tappable over merely non-overlapping" idea
+// as frame1Layer.js's own MIN_TITLE_FONT_PX, just for a tap target instead
+// of a font — picked a bit under DEAD_ZONE_PADDING_PX's own 28 (the
+// fat-finger forgiveness margin already padded around the icons' union box),
+// so the real target and its own forgiveness margin stay in the same
+// ballpark instead of one dwarfing the other.
+const MIN_ICON_PX = 30;
 
 // Touch has no native hover, so a held finger gets its own gesture instead:
 // hold past this on an icon to enter the same '.hovering' pose a desktop
@@ -105,12 +148,13 @@ const PHONE_INDEX = 3;
 // .png, no named identity anywhere in code) — this mapping was resolved by
 // visually matching each PNG to the spec's named rows: 0 pill blister pack
 // (精神藥物), 1 heart (愛心), 2 pink cat mascot (P君), 3 phone (手機), 4
-// wrapped candy (毒品糖果). Phone's stress:+10 and heart's across-the-board
-// -6 (in place of the spec's own affection:+6) are user-requested changes,
-// not from the spec doc.
+// wrapped candy (毒品糖果). Phone's stress:+10 is a user-requested change,
+// not from the spec doc. Heart no longer touches affection at all
+// (user-requested — it used to carry affection:-6 in place of the spec's own
+// affection:+6).
 const STICKER_DELTAS = [
   { stress: -12, darkness: 6 },
-  { affection: -6, stress: -6, darkness: -6 },
+  { stress: -6, darkness: -6 },
   { affection: 8, stress: -4 },
   { followers: 800, stress: 10 },
   { stress: -20, darkness: 14 },
@@ -170,12 +214,15 @@ export class StickerListLayer extends BaseIframeLayer {
     this.stage = opts.stage;
     this.el.style.pointerEvents = 'none';
 
-    // User-adjustable on top of the board-tracked base box computed in
-    // _reposition() — x/y is a logical-px offset from the board's own
-    // center, scaleX/scaleY/rotation apply as a CSS transform around that
-    // (shifted) box's center. Lets the panel's normal x/y/scale/rotate
-    // sliders (see LayerPanel.js) work here exactly like any other layer,
-    // without touching how the box is actually glued to the board.
+    // User-adjustable on top of the container's own fixed base anchor — in
+    // horizontal mode that anchor is now frame1Layer.js's shared flex row
+    // (see .ng-substat-row/.ng-sticker-slot in its ensureStyles()), which
+    // owns the row's actual position; x/y here applies as a plain offset on
+    // top of wherever the flex layout places the sticker slot (see
+    // _reposition()'s horizontal branch), scaleX/scaleY/rotation apply as a
+    // CSS transform around the (shifted) box's center. Lets the panel's
+    // normal x/y/scale/rotate sliders (see LayerPanel.js) keep working here
+    // like any other layer without fighting the flex-derived anchor.
     this._transform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
     this._itemRects = null; // page-coordinate rects for the 5 icons, refreshed from the iframe's own measurements
@@ -474,41 +521,34 @@ export class StickerListLayer extends BaseIframeLayer {
     const frame1 = this.manager.get('frame1');
     if (!board || !board.sprite || !frame1 || !frame1.sprite) return;
 
-    const sprite = board.sprite;
-    const bounds = sprite.getLocalBounds();
-    const w = bounds.width * sprite.scale.x;
-    const h = bounds.height * sprite.scale.y;
     const scale = this.stage.scaleFactor;
-    const screenW = w * scale;
-    const screenH = h * scale;
     const t = this._transform;
-    // sprite.x/y already bakes in board._anchorX/Y's own per-axis stretch
-    // (BoardAnchoredLayer._reposition(), tracking heading.boarding's
-    // non-uniform edge-to-edge stretch) — but t.x/t.y is a flat logical-px
-    // offset on top of that, so without applying the same per-axis stretch
-    // to it too, this panel's own x/y nudge holds a fixed size in logical
-    // units while the board underneath it stretches non-uniformly around
-    // it, and the two drift apart (varying window/panel aspect ratio) until
-    // the row lands somewhere unintended, sometimes overlapping the frame
-    // above. board._stretchFactors is the same private helper
-    // BoardAnchoredLayer used to compute sprite.x/y itself.
-    const { stretchX, stretchY } = board._stretchFactors(sprite.parent);
 
-    // Frame 1's own box — re-derived from its live sprite.x/y/width/height
-    // on every tick (same pattern holographicLayer.js uses to track Frame
-    // 1) so both the normal horizontal anchor and the narrow-mode vertical
-    // one below stay flush with the frame at any window size/aspect ratio,
-    // not just the one they were tuned at. Frame 1 is always visible, unlike
-    // the listStickers board sprite this panel otherwise tracks (that one
-    // stays invisible — see manifest.json/state.json — so its authored
-    // position is an arbitrary leftover, fine as a size/shape reference but
-    // not as an anchor point).
-    const frameSprite = frame1.sprite;
-    const frameBounds = frameSprite.getLocalBounds();
-    const frameScreenW = frameBounds.width * frameSprite.scale.x * scale;
-    const frameScreenH = frameBounds.height * frameSprite.scale.y * scale;
-    const frameLeftX = this.stage.root.position.x + frameSprite.x * scale - frameScreenW / 2;
-    const frameTopY = this.stage.root.position.y + frameSprite.y * scale - frameScreenH / 2;
+    // Frame 1's own box — sprite.getBounds() is the same PIXI global-space
+    // AABB frame1Layer.js's own _repositionStatHud() reads off frame1/chat's
+    // sprites, already in the #stage-world/iframe's own screen-pixel space
+    // (see domSpriteOverlay.js's header comment) with every parent transform
+    // (position, scale, rotation, mobileWiden.js's own width-only stretch)
+    // baked in, unlike a hand-rolled `stage.root.position + sprite.x * scale`
+    // recompute that assumes a centered anchor and no extra parent
+    // transforms. Re-read every tick (same pattern holographicLayer.js uses
+    // to track Frame 1) so both the normal horizontal anchor and the
+    // narrow-mode vertical one below stay flush with the frame at any window
+    // size/aspect ratio, not just the one they were tuned at.
+    const frameBounds = frame1.sprite.getBounds();
+    const frameScreenW = frameBounds.width;
+    const frameScreenH = frameBounds.height;
+    const frameLeftX = frameBounds.x;
+    const frameTopY = frameBounds.y;
+
+    // t.x/t.y (the panel's own x/y nudge sliders, see setTransform()) are
+    // flat logical-px offsets — converting them to screen px needs whatever
+    // per-axis stretch the thing they're anchored to is under: Frame 1's own
+    // sprite scale (its authored y-scale, since mobileWiden never touches
+    // scale.y; on the x-axis, that same authored scale further stretched by
+    // mobileWiden.js on narrow/short viewports, scale.x only).
+    const stretchX = frame1.sprite.scale.x;
+    const stretchY = frame1.sprite.scale.y;
 
     // Empty margin to the left of Frame 1's own live box — nonzero whenever
     // the viewport is wider-relative-to-height than 16:9 (Stage.resize()'s
@@ -523,11 +563,21 @@ export class StickerListLayer extends BaseIframeLayer {
     // edge as the only space actually free, or the column ends up floating
     // on top of Frame 1 instead of beside it.
     const marginPx = frameLeftX;
+
+    // Row's own box (both branches below) — sized as a fraction of Frame 1's
+    // own live width, not the listStickers board sprite's own getBounds().
+    // mobileWiden.js stretches Frame 1's width (scale.x) on narrow/short
+    // viewports but never touches the listStickers board at all, so sizing
+    // off the board's own box left the row's SIZE frozen while its anchor
+    // point (frameLeftX/frameTopY, already Frame-1-derived) kept tracking
+    // Frame 1's widening box — the two drifted apart instead of resizing
+    // together, same complaint the earlier position-only fix didn't cover.
+    const screenW = frameScreenW * HORIZONTAL_ROW_WIDTH_FRACTION;
     // Icon size is scaled up from what the horizontal row uses (17% of
     // screenW, style.css's .sticker-item) by MOBILE_ICON_SCALE — backed out
     // into the column width that yields it again once the CSS shrinks it to
     // VERT_ICON_WIDTH_FRACTION.
-    const colWidth = (0.17 * screenW * MOBILE_ICON_SCALE) / VERT_ICON_WIDTH_FRACTION;
+    const colWidth = (ICON_WIDTH_FRACTION * screenW * MOBILE_ICON_SCALE) / VERT_ICON_WIDTH_FRACTION;
     const narrow = marginPx > colWidth * NARROW_MARGIN_FACTOR;
 
     // Falling-clone size (script.js's spawnClone) is authored in fixed CSS
@@ -538,13 +588,22 @@ export class StickerListLayer extends BaseIframeLayer {
     // authored size on a desktop viewport bigger than 1920x1080.
     const cloneScale = Math.min(1, scale);
 
+    // User-requested: the sticker row and frame1Layer.js's stat HUD are now a
+    // real CSS flex relationship (row + fixed gap), not two independently
+    // hand-rolled anchors — see .ng-substat-row/.ng-sticker-slot's own CSS
+    // comment in frame1Layer.js's ensureStyles() for why an iframe's content
+    // needs this plain placeholder element as a bridge. Only meaningful in
+    // "horizontal" (non-narrow) mode below — "narrow" mode floats
+    // independently in the side margin and doesn't participate in that row
+    // at all, same as before this change.
+    const stickerSlot = document.querySelector('.ng-sticker-slot');
+
     let pos;
     if (narrow) {
       // Floats independently in the side margin instead of tracking the
-      // listStickers board underneath (there's no board art out there to
-      // stay glued to) — so the user's tuned x/y nudge, meant for the
-      // below-frame horizontal row, is intentionally not reapplied here;
-      // only scale/rotation still carry over.
+      // listStickers board underneath — there's no board art out there to
+      // stay glued to.
+      if (stickerSlot) stickerSlot.style.display = 'none'; // opt out of frame1Layer.js's flex row entirely — let the stat hud have the row to itself
       pos = {
         left: (marginPx - colWidth) / 2,
         top: frameTopY,
@@ -557,19 +616,122 @@ export class StickerListLayer extends BaseIframeLayer {
         cloneScale,
       };
     } else {
-      const centerY = this.stage.root.position.y + (sprite.y + t.y * stretchY) * scale;
-      const leftX = frameLeftX + t.x * stretchX * scale;
+      // frame1Layer.js hasn't built its flex row yet — both layers load
+      // concurrently in main.js's boot() with no ordering guarantee (same
+      // caveat this file's own _wireBoardHoverOpen() already documents for
+      // the listStickers board). Try again next tick once it exists.
+      if (!stickerSlot) return;
+
+      // ---- Icon size: same class of bug frame1Layer.js's stat hud had
+      // (see its own vScale/hudMaxU comments in _repositionStatHud) — the
+      // icons' size has only ever been derived from WIDTH (ICON_WIDTH_
+      // FRACTION of screenW, itself HORIZONTAL_ROW_WIDTH_FRACTION of Frame
+      // 1's own on-screen width), with nothing checking whether that size
+      // actually fits the vertical gap below Frame 1. On a mobileWiden-
+      // stretched (wide/short) viewport, Frame 1's own width gets pushed
+      // well past its "real" scale to reclaim the pillarbox margin,
+      // inflating screenW — and therefore icon size — right along with it
+      // (user-requested: "請按照差不多的RWD邏輯 修正Sticker的高度位置縮放",
+      // after frame1Layer.js's stat hud got this same class of fix).
+      // getStatRowAvailH() returns the exact vertical budget the hud itself
+      // is capped to — both are flex-start-aligned siblings sharing this
+      // row's one top anchor (see .ng-substat-row's own CSS comment in
+      // frame1Layer.js), so "never taller than that same ceiling" is
+      // exactly "never overlaps Frame 1 or the boarding" here too, with no
+      // separate copy of TOP_OFFSET_U/BOTTOM_SAFE_U/HINT_GAP_U/vScale to
+      // keep in sync by hand. Falls back to Infinity (no ceiling) before
+      // frame1Layer.js's own first tick has ever run.
+      const availH = frame1.getStatRowAvailH ? frame1.getStatRowAvailH() : null;
+      const naturalIconSize = ICON_WIDTH_FRACTION * screenW;
+      // Prefer a legible/tappable floor (MIN_ICON_PX) the same way
+      // frame1Layer.js's idealHudU prefers MIN_TITLE_FONT_PX — but clamp
+      // continuously to whatever vertical room actually exists (hudMaxU's
+      // exact pattern: `Math.min(ideal, ceiling)`) rather than a binary
+      // switch, so the icons ease down smoothly on a cramped viewport
+      // instead of jumping straight past the floor.
+      const idealIconSize = Math.max(naturalIconSize, MIN_ICON_PX);
+      const iconSize = availH == null ? idealIconSize : Math.min(idealIconSize, Math.max(0, availH));
+      // Icons are square and sized purely off a % of the row's own box
+      // WIDTH (style.css's `.sticker-item { width: 17%; aspect-ratio: 1/1 }`)
+      // — capping only the "height" field posted to the iframe would shrink
+      // the invisible container box but leave the actual on-screen icons
+      // (which never read that height at all) untouched. Solving back for
+      // the WIDTH that produces the clamped `iconSize` is what actually
+      // shrinks/grows the icons themselves, so this replaces `screenW`
+      // wherever it drove sizing below (the reserved flex-slot footprint,
+      // and the box width posted to the iframe).
+      const effectiveScreenW = iconSize / ICON_WIDTH_FRACTION;
+
+      // Reserve this row's own footprint as a flex item in frame1Layer.js's
+      // shared row — its LEFT/TOP then falls out of the browser's own flex
+      // layout (row anchor + fixed gap + however much width the stat hud
+      // claims), not anything hand-computed here, so it can no longer drift
+      // from the stat hud's own anchor the way two independent computations
+      // used to (the exact bug this replaces — see git history/PR notes).
+      // Reserved in frame1Layer.js's flex row as the icons' own TIGHT
+      // footprint (mirrors #sticker-row's CSS: 1% left padding + 5 icons at
+      // 17% + 4 gaps at 2% = 94% of effectiveScreenW) — NOT the full
+      // effectiveScreenW sent to the iframe below (see `pos.width` further
+      // down), which still includes #sticker-row's own ~6% of unused
+      // right-side padding past the last icon. Reserving that unused
+      // padding as if it were occupied would just steal that much extra
+      // width from the stat hud for nothing actually visible there — the
+      // exact bug that made the whole hud vanish when this used the full
+      // screenW as the slot's width (user report: "屬性表沒看到").
+      const ICON_ROW_FOOTPRINT_FRACTION = 0.01 + 5 * ICON_WIDTH_FRACTION + 4 * 0.02;
+      stickerSlot.style.display = '';
+      stickerSlot.style.width = `${effectiveScreenW * ICON_ROW_FOOTPRINT_FRACTION}px`;
+      stickerSlot.style.height = `${iconSize}px`;
+
+      // Forces a layout read — same tradeoff frame1Layer.js's own per-tick
+      // .ng-corner-hint read already accepts — needed because the slot's
+      // real on-screen position now depends on live flex layout this file
+      // can't precompute standalone anymore.
+      const slotRect = stickerSlot.getBoundingClientRect();
+      // Iframe-local coordinates: this.el is the full-viewport iframe (see
+      // this file's own header comment) script.js's postMessage handler
+      // expects positions relative to — the same left/top conversion
+      // _storeRects() already does in the opposite direction (iframe-local
+      // -> page).
+      const frameBox = this.el.getBoundingClientRect();
+
       pos = {
-        left: leftX,
-        top: centerY - screenH / 2,
-        width: screenW,
-        height: screenH,
+        // t.x/t.y (the panel's own nudge sliders) apply as an offset on top
+        // of the flex-computed base position, same per-axis stretch
+        // conversion as before this change. slotRect's LEFT/TOP (not its
+        // width/height) is what actually matters here — the tight slot and
+        // the full effectiveScreenW box below share the same starting edge
+        // (#sticker-row's own 1% left padding), they just extend different
+        // amounts further right.
+        left: slotRect.left - frameBox.left + t.x * stretchX * scale,
+        top: slotRect.top - frameBox.top + t.y * stretchY * scale,
+        // effectiveScreenW/iconSize (the FULL, height-clamped box, not the
+        // tightened slot) — #sticker-row's own percentage-based icon sizing
+        // (17% of this width) renders icons at exactly the pixel size the
+        // availH clamp above resolved to, regardless of how tightly
+        // frame1Layer.js's flex row reserves space for them.
+        width: effectiveScreenW,
+        height: iconSize,
         scaleX: t.scaleX,
         scaleY: t.scaleY,
         rotation: t.rotation,
         orientation: 'horizontal',
         cloneScale,
       };
+    }
+
+    if (narrow) {
+      // Guard against the column's own box pushing past the visible stage
+      // box entirely on an extreme aspect ratio — the primary mechanism for
+      // this branch, which (unlike the horizontal row above) has no
+      // inflated invisible-box quirk to work around: its own box height
+      // (frameScreenH * 0.85) already is its real visible footprint. Padded,
+      // not flush against 0/stageW/stageH — see boardingSafeArea.js: this
+      // and frame1Layer.js's stat HUD share the same boarding-edge inset so
+      // neither ever sits flush against the boarding art's own border.
+      const clamped = clampIntoBoardingSafeArea(this.stage, pos);
+      pos.left = clamped.left;
+      pos.top = clamped.top;
     }
 
     const prev = this._lastPos;

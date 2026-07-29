@@ -200,7 +200,7 @@ async function createLayer(kind, entry) {
         break;
       case 'group': {
         const group = await GroupLayer.create({
-          id: entry.id, label: entry.label, stage, folder: entry.folder, images: entry.images,
+          id: entry.id, label: entry.label, stage, folder: entry.folder, images: entry.images, manager,
         });
         const promotedLottie = await Promise.all((entry.lottie || []).map(le => BaseLottieLayer.create({
           id: le.id, label: `${entry.label} / ${le.label}`, src: `${entry.folder}/${le.file}`,

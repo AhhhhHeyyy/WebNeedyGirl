@@ -4,7 +4,7 @@ import { StatStore } from '../core/StatStore.js';
 import { DialogueStore } from '../core/DialogueStore.js';
 import { matchMessage, KEYWORD_CATEGORIES } from '../core/keywordTable.js';
 import { triggerAscensionFlood } from './yandereProtoOverlay.js';
-import { LOGICAL_W, LOGICAL_H } from '../core/Stage.js';
+import { saveComment } from '../../shared/firebase.js';
 
 // chat.chatboard (UI/chat/Chatboard.png) is the frame's lavender FILL —
 // the actual message list + input bar seen in the reference mockup is real
@@ -90,28 +90,72 @@ const STAT_LABELS = {
   ko: { affection: '호감도', stress: '스트레스', darkness: '흑화' },
 };
 const LOCKED_LABEL = { zh: '(不可刪)', en: '(locked)', ja: '（削除不可）', ko: '(삭제불가)' };
-// Logical (1920x1080-space) values — scaled by Stage's own scaleFactor at
-// resize time (see ChatBoardLayer's _repositionHint) so the hint's size and
-// clearance from the frame's border grow/shrink in lockstep with everything
-// else on stage instead of drifting at odd viewport sizes.
-const HINT_MARGIN_X_LOGICAL = 2;
-const HINT_MARGIN_Y_LOGICAL = 8;
-const HINT_FONT_LOGICAL = 20;
+// Shown inline inside the compose modal's message field (see buildComposeModal's
+// .ccm-msg-hint), not as a separate corner overlay — user-requested move so the
+// hint sits right where the player is actually typing.
 const HINT_TITLE = {
   zh: '留言關鍵字提示:',
   en: 'Chat Keyword Hints:',
   ja: 'コメントキーワードヒント:',
   ko: '댓글 키워드 힌트:',
 };
-// The composer's own input placeholder — separate dict from HINT_TITLE
-// above since it's set once per language switch (via input.placeholder),
-// not rebuilt into a text node on every DialogueStore change.
+// The bottom composer bar is a click-to-open TRIGGER, not a live text field
+// (user-requested: clicking it opens the compose modal below, where the
+// actual name/message/sticker/SC fields live) — its placeholder wording
+// reflects that ("tap to comment", not "type a message").
 const INPUT_PLACEHOLDER = {
+  zh: '點擊輸入留言…',
+  en: 'Tap to comment…',
+  ja: 'タップしてコメント…',
+  ko: '탭하여 댓글 작성…',
+};
+// The modal's own message field placeholder — the actual typing happens
+// here now, INPUT_PLACEHOLDER above is just the bottom-bar trigger's text.
+const MODAL_MSG_PLACEHOLDER = {
   zh: '輸入留言…',
   en: 'Type a message…',
   ja: 'コメントを入力…',
   ko: '댓글을 입력하세요…',
 };
+// The optional nickname field in the compose modal — left empty on send,
+// the row/Firestore doc falls back to ANONYMOUS_LABEL below instead of
+// blocking the send or forcing a name.
+const NAME_PLACEHOLDER = {
+  zh: '暱稱（留空＝匿名）',
+  en: 'Name (blank = anonymous)',
+  ja: 'ニックネーム（空欄＝匿名）',
+  ko: '닉네임 (비워두면 익명)',
+};
+const ANONYMOUS_LABEL = {
+  zh: '匿名', en: 'Anonymous', ja: '匿名', ko: '익명',
+};
+
+// The 5 stand-alone sticker PNGs at project-root `stickers/` (distinct from
+// UI/list-stickers.png's separate 5-icon stat-effect board — these are
+// purely decorative chat attachments, no StatStore delta attached). Kept as
+// literal filenames (not URL-encoded) — browsers auto-encode spaces in an
+// <img>.src assignment, and the inconsistent "sticker"/"stickers" naming is
+// just how the source files happen to be named.
+const STICKERS = [
+  { id: 'sticker1', file: 'stickers/sticker (1).png' },
+  { id: 'sticker2', file: 'stickers/stickers (2).png' },
+  { id: 'sticker3', file: 'stickers/stickers (3).png' },
+  { id: 'sticker4', file: 'stickers/stickers (4).png' },
+  { id: 'sticker5', file: 'stickers/stickers (5).png' },
+];
+
+// Compose modal strings (user-requested: clicking the chat's inputbar opens
+// a centered modal — name/message/sticker/SC all entered there instead of
+// inline).
+const MODAL_TITLE = {
+  zh: '留言', en: 'Leave a Comment', ja: 'コメントする', ko: '댓글 남기기',
+};
+const MODAL_NAME_LABEL = { zh: '暱稱', en: 'Name', ja: 'ニックネーム', ko: '닉네임' };
+const MODAL_MSG_LABEL = { zh: '留言內容', en: 'Message', ja: 'メッセージ', ko: '메시지' };
+const MODAL_STICKER_LABEL = { zh: '貼圖', en: 'Sticker', ja: 'スタンプ', ko: '스티커' };
+const MODAL_SC_LABEL = { zh: '超級留言', en: 'Superchat', ja: 'スーパーチャット', ko: '슈퍼챗' };
+const MODAL_SEND_LABEL = { zh: '送出', en: 'Send', ja: '送信', ko: '보내기' };
+const MODAL_CANCEL_LABEL = { zh: '取消', en: 'Cancel', ja: 'キャンセル', ko: '취소' };
 
 function formatDelta(delta, lang) {
   const labels = STAT_LABELS[lang] ?? STAT_LABELS.en;
@@ -162,7 +206,6 @@ function buildKeywordHint(lang) {
 
 const FONT_CSS_ID = 'ng-chat-font-face';
 const STYLE_CSS_ID = 'ng-chat-overlay-style';
-const CORNER_HINT_STYLE_ID = 'ng-corner-hint-style';
 
 function ensureStyles() {
   if (!document.getElementById(FONT_CSS_ID)) {
@@ -317,6 +360,24 @@ function ensureStyles() {
         cursor: none; /* see the scrollbar thumb's cursor:none above — the decorative pixel-cursor is the only cursor meant to show, not a native text I-beam */
       }
       .ng-chat-input::placeholder { color: rgba(75, 61, 115, 0.4); }
+      /* Sender name shown above a row's message text — only rendered when a
+         name (or the anonymous fallback) is actually known, i.e. for rows
+         sent through this session's own composer; the seed MESSAGES array
+         has none, so those rows stay exactly as before. */
+      .ng-chat-name-label {
+        display: block;
+        font-size: calc(var(--ng-u) * 32);
+        font-weight: 700;
+        opacity: 0.85;
+        margin-bottom: calc(var(--ng-u) * 2);
+      }
+      .ng-chat-row-sticker {
+        display: block;
+        width: calc(var(--ng-u) * 70);
+        height: calc(var(--ng-u) * 70);
+        object-fit: contain;
+        image-rendering: pixelated;
+      }
       .ng-chat-toolbar {
         flex: 0 0 auto;
         display: flex;
@@ -333,57 +394,21 @@ function ensureStyles() {
         background: #d8cbe0;
       }
       .ng-chat-toolbar span.send { background: #e08a9a; cursor: none; }
-      .ng-chat-tierbar {
-        flex: 0 0 auto;
-        display: flex;
-        align-items: center;
-        gap: calc(var(--ng-u) * 6);
-        padding: 0 calc(var(--ng-u) * 10) calc(var(--ng-u) * 8);
-        background: #fbf7fc;
-        pointer-events: auto;
-      }
-      .ng-chat-tier-btn {
-        flex: 1 1 0;
-        height: calc(var(--ng-u) * 34);
-        border: none;
-        border-radius: 999px;
-        background: #eee3f0;
-        color: #4b3d73;
-        font-family: inherit;
-        font-size: calc(var(--ng-u) * 24);
-        cursor: none;
-      }
-      /* Selection state is a ring, not a fill swap — the button's own fill
-         already carries its tier color (via the shared .sc-* classes below),
-         so overriding background on .active would blow away the exact color
-         cue the button exists to show. */
-      .ng-chat-tier-btn.active { box-shadow: 0 0 0 calc(var(--ng-u) * 3) rgba(255, 255, 255, 0.85) inset; }
       /* Superchat tier colors (spec §8-2), graded low → high amount the same
          way 主播女孩重度依賴 (NEEDY GIRL OVERDOSE)'s stream UI grades SC:
-         blue/green/yellow/orange/red, red = priciest tier. Shared (no
-         .ng-chat-row prefix) between the tier buttons themselves — solid
-         fill, matching the reference mockup's colored-pill amount buttons —
-         and the SC message rows they produce, so both use one color per
-         tier instead of drifting. Kept as its own sc-* namespace (as
-         opposed to the bare .red/.yellow above, which belong to unrelated
-         seed demo rows) so tier colors can't collide with keyword-row
-         colors or each other. */
+         blue/green/yellow/orange/red, red = priciest tier. The tier PICKER
+         buttons themselves now live in the compose modal's own stylesheet
+         (see ensureComposeModalStyle's .ccm-tier-btn.sc-* rules, outside
+         this element's subtree) — these bare .sc-* rules only style the SC
+         message ROWS the picker produces, one color per tier so both stay in
+         sync. Kept as its own sc-* namespace (as opposed to the bare
+         .red/.yellow above, which belong to unrelated seed demo rows) so
+         tier colors can't collide with keyword-row colors or each other. */
       .sc-blue { background: var(--ng-sc-blue); color: #1c3a4a; }
       .sc-green { background: var(--ng-sc-green); color: #1f3d2b; }
       .sc-yellow { background: var(--ng-sc-yellow); color: #4a3b12; }
       .sc-orange { background: var(--ng-sc-orange); color: #4a2a12; }
       .sc-red { background: var(--ng-sc-red); color: #fff; }
-      /* The input pill's own tint rides on top of the plain .sc-* fill
-         above (same class, so same var(--ng-sc-*) source of truth) but
-         lightened toward white — two classes on one element beats the bar's
-         single-class rule on CSS specificity, so this wins without !important.
-         Text stays dark on every tier here (unlike .sc-red's white above)
-         since a 35%-strength tint never gets dark enough to need light text. */
-      .ng-chat-input.sc-blue { background: color-mix(in srgb, var(--ng-sc-blue) 35%, #fff); color: #1c3a4a; }
-      .ng-chat-input.sc-green { background: color-mix(in srgb, var(--ng-sc-green) 35%, #fff); color: #1f3d2b; }
-      .ng-chat-input.sc-yellow { background: color-mix(in srgb, var(--ng-sc-yellow) 35%, #fff); color: #4a3b12; }
-      .ng-chat-input.sc-orange { background: color-mix(in srgb, var(--ng-sc-orange) 35%, #fff); color: #4a2a12; }
-      .ng-chat-input.sc-red { background: color-mix(in srgb, var(--ng-sc-red) 35%, #fff); color: #4a1418; }
       .ng-chat-row.kw-sweet { background: #f3c6e0; color: #2f2540; }
       .ng-chat-row.kw-hater { background: #c9534d; color: #2f2540; }
       .ng-chat-row.kw-fourthwall { background: #9ad1e0; color: #2f2540; }
@@ -391,33 +416,36 @@ function ensureStyles() {
     `;
     document.head.appendChild(style);
   }
-  if (!document.getElementById(CORNER_HINT_STYLE_ID)) {
-    const style = document.createElement('style');
-    style.id = CORNER_HINT_STYLE_ID;
-    style.textContent = `
-      .ng-corner-hint {
-        position: absolute;
-        font-family: 'NGChatSilver', monospace;
-        line-height: 1.2;
-        color: #1b2a6b;
-        text-align: right;
-        white-space: normal;
-        overflow-wrap: break-word;
-        pointer-events: none;
-        user-select: none;
-      }
-    `;
-    document.head.appendChild(style);
-  }
+  ensureComposeModalStyle();
 }
 
-function addRow(messages, text, kind) {
+function addRow(messages, text, kind, name, stickerFile) {
   const row = document.createElement('div');
   row.className = `ng-chat-row${kind ? ` ${kind}` : ''}`;
   const icon = document.createElement('span');
   icon.className = 'ng-chat-icon';
   const textEl = document.createElement('span');
-  textEl.textContent = text;
+  // `name` is only ever passed for rows sent through this session's own
+  // composer (see performSend() below) — the seed MESSAGES array never
+  // passes one, so those rows render exactly as before with no label.
+  if (name) {
+    const nameEl = document.createElement('span');
+    nameEl.className = 'ng-chat-name-label';
+    nameEl.textContent = name;
+    textEl.appendChild(nameEl);
+  }
+  // A sticker can be sent with or without accompanying text (see the compose
+  // modal's send-enabled check) — the text node is only appended when
+  // there's actually text to show, so a sticker-only row doesn't render a
+  // dangling empty line under the image.
+  if (stickerFile) {
+    const stickerImg = document.createElement('img');
+    stickerImg.className = 'ng-chat-row-sticker';
+    stickerImg.src = stickerFile;
+    stickerImg.alt = '';
+    textEl.appendChild(stickerImg);
+  }
+  if (text) textEl.appendChild(document.createTextNode(text));
   row.append(icon, textEl);
   messages.appendChild(row);
   // New message is only useful to the person typing it if the list actually
@@ -510,6 +538,362 @@ function makeThumbDraggable(messages, thumb) {
   thumb.addEventListener('pointercancel', endDrag);
 }
 
+// Compose modal (user-requested: clicking the chat's bottom inputbar opens a
+// centered modal — name/message/sticker/SC all entered there instead of
+// inline) — sized/positioned the same way phoneCallOverlay.js's incoming-call
+// modal is: a fixed-px "design" box, scaled uniformly via a single CSS
+// transform to fit both viewport axes (Math.min(w/W, h/H), same formula
+// Stage.js's own resize() uses), rather than chat.chatboardLayer's own
+// --ng-u per-unit calc() scaling — this modal lives on document.body, not
+// inside the chatboard's own DOM-overlay subtree, so it has no board-relative
+// "reference width" to scale off of the way the rest of this file does.
+const CCM_Z_INDEX = 4500; // above every in-game layer/effect, clear of phoneCallOverlay's 5000 (the two are never expected to be open at once, but keep them non-overlapping regardless)
+const CCM_DESIGN_W = 760;
+const CCM_MOBILE_BREAKPOINT_PX = 1024;
+const CCM_MOBILE_DESIGN_W = 460;
+const CCM_FIT_MARGIN_W = 0.94;
+const CCM_FIT_MARGIN_H = 0.92;
+const CCM_MODAL_STYLE_ID = 'ng-chat-compose-modal-style';
+
+function ensureComposeModalStyle() {
+  if (document.getElementById(CCM_MODAL_STYLE_ID)) return;
+  const style = document.createElement('style');
+  style.id = CCM_MODAL_STYLE_ID;
+  style.textContent = `
+    #ng-ccm-backdrop {
+      position: fixed; inset: 0;
+      background: rgba(20, 10, 35, 0.45);
+      z-index: ${CCM_Z_INDEX - 1};
+      opacity: 0; pointer-events: none;
+      transition: opacity .25s ease;
+    }
+    #ng-ccm-backdrop.open { opacity: 1; pointer-events: auto; }
+
+    #ng-ccm-modal {
+      position: fixed; left: 50%; top: 50%;
+      transform: translate(-50%, -50%) scale(calc(var(--ccm-scale, 1) * 0.85));
+      width: ${CCM_DESIGN_W}px;
+      z-index: ${CCM_Z_INDEX};
+      font-family: 'NGChatSilver', 'Silver', -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+      opacity: 0;
+      transition: transform .32s cubic-bezier(.22,1.15,.4,1), opacity .25s ease;
+      pointer-events: none;
+    }
+    #ng-ccm-modal.open {
+      transform: translate(-50%, -50%) scale(var(--ccm-scale, 1));
+      opacity: 1;
+      pointer-events: auto;
+    }
+    @media (max-width: ${CCM_MOBILE_BREAKPOINT_PX}px) {
+      #ng-ccm-modal { width: ${CCM_MOBILE_DESIGN_W}px; }
+    }
+
+    #ng-ccm-modal .ccm-window {
+      border: 3px solid #8fd0f2;
+      overflow: hidden;
+      box-shadow: 0 18px 50px rgba(20, 10, 40, 0.45);
+      background: #f3e9fb;
+      color: #4b3d73;
+    }
+    /* Same "retro OS window" chrome idiom phoneCallOverlay.js's own modal
+       uses (titlebar + fake min/close buttons) — reused here so the app's
+       handful of centered popups read as one family, not three unrelated
+       designs. */
+    #ng-ccm-modal .ccm-titlebar {
+      height: 30px;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 8px;
+      background: linear-gradient(90deg, #d8f0ff 0%, #f6cdf0 50%, #d8f0ff 100%);
+      border-bottom: 2px solid #8fd0f2;
+    }
+    #ng-ccm-modal .ccm-titleicon { width: 13px; height: 13px; border-radius: 2px; background: #5b67c7; }
+    #ng-ccm-modal .ccm-title { font-size: 14px; font-weight: 700; letter-spacing: .03em; }
+    #ng-ccm-modal .ccm-winbtn {
+      width: 16px; height: 16px; border-radius: 2px;
+      background: rgba(255,255,255,0.65); border: 1px solid #6a5fae;
+      display: flex; align-items: center; justify-content: center;
+      position: relative; cursor: pointer;
+    }
+    #ng-ccm-modal .ccm-winbtn:hover { background: #f2a5ae; }
+    #ng-ccm-modal .ccm-x::before, #ng-ccm-modal .ccm-x::after {
+      content: ''; position: absolute; width: 9px; height: 1.4px; background: #5a4a9e; top: 50%; left: 50%;
+    }
+    #ng-ccm-modal .ccm-x::before { transform: translate(-50%, -50%) rotate(45deg); }
+    #ng-ccm-modal .ccm-x::after { transform: translate(-50%, -50%) rotate(-45deg); }
+
+    #ng-ccm-modal .ccm-body {
+      display: flex; flex-direction: column; gap: 10px;
+      padding: 18px 22px 6px;
+    }
+    #ng-ccm-modal .ccm-label { font-size: 14px; font-weight: 700; opacity: .75; }
+    #ng-ccm-modal .ccm-name-input, #ng-ccm-modal .ccm-msg-input {
+      height: 38px; border: none; outline: none;
+      appearance: none; -webkit-appearance: none;
+      border-radius: 999px; background: #fff;
+      padding: 0 16px; font-family: inherit; font-size: 15px; color: #4b3d73;
+    }
+    #ng-ccm-modal .ccm-name-input::placeholder, #ng-ccm-modal .ccm-msg-input::placeholder {
+      color: rgba(75, 61, 115, 0.4);
+    }
+    /* Keyword hint, moved here (user-requested) from a standalone corner
+       overlay on the game stage — now sits right under the field the
+       player is actually typing into. */
+    #ng-ccm-modal .ccm-msg-hint {
+      font-size: 11px;
+      line-height: 1.4;
+      color: rgba(75, 61, 115, 0.65);
+      max-height: 4.2em;
+      overflow-y: auto;
+    }
+    #ng-ccm-modal .ccm-sticker-row { display: flex; gap: 8px; }
+    #ng-ccm-modal .ccm-sticker-btn {
+      flex: 1 1 0; aspect-ratio: 1; padding: 4px;
+      border: none; border-radius: 10px; background: #fff;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    #ng-ccm-modal .ccm-sticker-btn img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+    /* Selection ring, not a fill swap — same reasoning as chat's own
+       .ng-chat-tier-btn.active, just re-declared here since this modal's
+       markup lives outside .ng-chat-overlay's own stylesheet scope. */
+    #ng-ccm-modal .ccm-sticker-btn.active { box-shadow: 0 0 0 3px #b076c8 inset; background: #eee3f0; }
+    #ng-ccm-modal .ccm-tier-row { display: flex; gap: 6px; }
+    #ng-ccm-modal .ccm-tier-btn {
+      flex: 1 1 0; height: 32px; border: none; border-radius: 999px;
+      background: #eee3f0; color: #4b3d73; font-family: inherit; font-size: 13px; cursor: pointer;
+    }
+    #ng-ccm-modal .ccm-tier-btn.active { box-shadow: 0 0 0 2px rgba(255,255,255,0.85) inset; }
+    /* Same 5 superchat hues as .ng-chat-overlay's --ng-sc-* ladder — hardcoded
+       here rather than shared via CSS custom property since this modal's DOM
+       lives outside that element's subtree (no --ng-sc-* to inherit). */
+    #ng-ccm-modal .ccm-tier-btn.sc-blue { background: #8ecae6; color: #1c3a4a; }
+    #ng-ccm-modal .ccm-tier-btn.sc-green { background: #8fd19e; color: #1f3d2b; }
+    #ng-ccm-modal .ccm-tier-btn.sc-yellow { background: #f2c94c; color: #4a3b12; }
+    #ng-ccm-modal .ccm-tier-btn.sc-orange { background: #f2994a; color: #4a2a12; }
+    #ng-ccm-modal .ccm-tier-btn.sc-red { background: #e5484d; color: #fff; }
+
+    #ng-ccm-modal .ccm-actions {
+      display: flex; gap: 10px; justify-content: flex-end;
+      padding: 14px 22px 18px;
+    }
+    #ng-ccm-modal .ccm-btn {
+      border: none; border-radius: 999px; padding: 9px 22px;
+      font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: transform .12s ease;
+    }
+    #ng-ccm-modal .ccm-btn:active { transform: scale(0.95); }
+    #ng-ccm-modal .ccm-cancel { background: #eee3f0; color: #4b3d73; }
+    #ng-ccm-modal .ccm-send { background: #e08a9a; color: #fff; }
+    #ng-ccm-modal .ccm-send:disabled { opacity: .5; cursor: default; }
+  `;
+  document.head.appendChild(style);
+}
+
+// Built once per ChatBoardLayer instance (see buildOverlay() below) and
+// appended straight to document.body — same reason as phoneCallOverlay.js's
+// own modal: it needs to sit centered over the WHOLE viewport, not inside
+// the chatboard sprite's own DOM-overlay box (which is wherever the board
+// has been dragged/scaled to, see attachDomOverlay's onReposition).
+// `onSend` receives the fully-resolved payload once the user hits Send;
+// buildOverlay() below wires that to the same StatStore/keyword/Firestore
+// logic the old inline composer's submit() used to run directly.
+function buildComposeModal({ onSend }) {
+  ensureComposeModalStyle();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'ng-ccm-backdrop';
+
+  const root = document.createElement('div');
+  root.id = 'ng-ccm-modal';
+  root.innerHTML = `
+    <div class="ccm-window">
+      <div class="ccm-titlebar">
+        <div class="ccm-titleicon"></div>
+        <div class="ccm-title"></div>
+        <div class="ccm-winbtn ccm-close ccm-x"></div>
+      </div>
+      <div class="ccm-body">
+        <div class="ccm-label ccm-name-label"></div>
+        <input type="text" class="ccm-name-input" maxlength="24">
+        <div class="ccm-label ccm-msg-label"></div>
+        <input type="text" class="ccm-msg-input" maxlength="200">
+        <div class="ccm-msg-hint"></div>
+        <div class="ccm-label ccm-sticker-label"></div>
+        <div class="ccm-sticker-row"></div>
+        <div class="ccm-label ccm-sc-label"></div>
+        <div class="ccm-tier-row"></div>
+      </div>
+      <div class="ccm-actions">
+        <button type="button" class="ccm-btn ccm-cancel"></button>
+        <button type="button" class="ccm-btn ccm-send"></button>
+      </div>
+    </div>
+  `;
+  document.body.append(backdrop, root);
+
+  const titleEl = root.querySelector('.ccm-title');
+  const nameLabelEl = root.querySelector('.ccm-name-label');
+  const nameInput = root.querySelector('.ccm-name-input');
+  const msgLabelEl = root.querySelector('.ccm-msg-label');
+  const msgInput = root.querySelector('.ccm-msg-input');
+  const msgHintEl = root.querySelector('.ccm-msg-hint');
+  const stickerLabelEl = root.querySelector('.ccm-sticker-label');
+  const stickerRow = root.querySelector('.ccm-sticker-row');
+  const scLabelEl = root.querySelector('.ccm-sc-label');
+  const tierRow = root.querySelector('.ccm-tier-row');
+  const cancelBtn = root.querySelector('.ccm-cancel');
+  const sendBtn = root.querySelector('.ccm-send');
+  const closeBtn = root.querySelector('.ccm-close');
+
+  let selectedTier = null;
+  let selectedSticker = null;
+
+  function updateSendEnabled() {
+    sendBtn.disabled = !msgInput.value.trim() && !selectedSticker;
+  }
+
+  const stickerButtons = STICKERS.map((sticker) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ccm-sticker-btn';
+    const img = document.createElement('img');
+    img.src = sticker.file;
+    img.alt = '';
+    btn.appendChild(img);
+    btn.addEventListener('click', () => setSelectedSticker(selectedSticker === sticker ? null : sticker));
+    stickerRow.appendChild(btn);
+    return btn;
+  });
+
+  const tierButtons = SUPERCHAT_TIERS.map((tier) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = `ccm-tier-btn sc-${tier.color}`;
+    btn.textContent = `¥${tier.amount.toLocaleString()}`;
+    btn.addEventListener('click', () => setSelectedTier(selectedTier === tier ? null : tier));
+    tierRow.appendChild(btn);
+    return btn;
+  });
+
+  function setSelectedSticker(sticker) {
+    selectedSticker = sticker;
+    stickerButtons.forEach((b, i) => b.classList.toggle('active', STICKERS[i] === sticker));
+    updateSendEnabled();
+  }
+  function setSelectedTier(tier) {
+    selectedTier = tier;
+    tierButtons.forEach((b, i) => b.classList.toggle('active', SUPERCHAT_TIERS[i] === tier));
+  }
+
+  let isOpen = false;
+
+  function close() {
+    if (!isOpen) return;
+    isOpen = false;
+    root.classList.remove('open');
+    backdrop.classList.remove('open');
+  }
+
+  // Message text OR a sticker is required (either alone is a valid send —
+  // see updateSendEnabled above), but neither is forced; name is always
+  // optional (see NAME_PLACEHOLDER's header). Draft text/sticker/tier only
+  // clear on an actual send, not on cancel/close, so an accidental dismiss
+  // doesn't lose what the user already typed.
+  function doSend() {
+    const text = msgInput.value.trim();
+    if (!text && !selectedSticker) return;
+    onSend({
+      text, rawName: nameInput.value.trim(), tier: selectedTier, sticker: selectedSticker,
+    });
+    msgInput.value = '';
+    setSelectedSticker(null);
+    setSelectedTier(null);
+    updateSendEnabled();
+    close();
+  }
+
+  sendBtn.addEventListener('click', doSend);
+  cancelBtn.addEventListener('click', close);
+  closeBtn.addEventListener('click', close);
+  backdrop.addEventListener('click', close);
+  msgInput.addEventListener('input', updateSendEnabled);
+  msgInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(); });
+  nameInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(); });
+  const onWindowKeydown = (e) => { if (e.key === 'Escape' && isOpen) close(); };
+  window.addEventListener('keydown', onWindowKeydown);
+
+  // Root lives on document.body, outside #stage-area entirely, so nothing
+  // here would naturally reach main.js's stage-area click handler (spawns a
+  // decorative popup wherever the stage is clicked) — but stopping
+  // propagation here too costs nothing and keeps this modal consistent with
+  // every other DOM-overlay composer in this file.
+  root.addEventListener('mousedown', (e) => e.stopPropagation());
+  root.addEventListener('click', (e) => e.stopPropagation());
+
+  function applyLang(lang) {
+    titleEl.textContent = MODAL_TITLE[lang] ?? MODAL_TITLE.en;
+    nameLabelEl.textContent = MODAL_NAME_LABEL[lang] ?? MODAL_NAME_LABEL.en;
+    nameInput.placeholder = NAME_PLACEHOLDER[lang] ?? NAME_PLACEHOLDER.en;
+    msgLabelEl.textContent = MODAL_MSG_LABEL[lang] ?? MODAL_MSG_LABEL.en;
+    msgInput.placeholder = MODAL_MSG_PLACEHOLDER[lang] ?? MODAL_MSG_PLACEHOLDER.en;
+    msgHintEl.textContent = buildKeywordHint(lang);
+    stickerLabelEl.textContent = MODAL_STICKER_LABEL[lang] ?? MODAL_STICKER_LABEL.en;
+    scLabelEl.textContent = MODAL_SC_LABEL[lang] ?? MODAL_SC_LABEL.en;
+    cancelBtn.textContent = MODAL_CANCEL_LABEL[lang] ?? MODAL_CANCEL_LABEL.en;
+    sendBtn.textContent = MODAL_SEND_LABEL[lang] ?? MODAL_SEND_LABEL.en;
+  }
+  applyLang(DialogueStore.getLang());
+  const offLang = DialogueStore.on('change', (snap) => applyLang(snap.lang));
+
+  // Fit-scale against BOTH viewport axes, same Math.min(w/W, h/H) formula
+  // phoneCallOverlay.js's own modal uses — but unlike that one, this is NOT
+  // additionally capped at 1. phoneCallOverlay's short single-screen content
+  // reads fine pinned to its authored 760px size on any normal-or-larger
+  // display; this modal stacks name/message/sticker/SC fields tall enough
+  // that pinning it to 1x left it reading small on any viewport roomier than
+  // its own design box (user-reported: "字太小了看不到"). Letting it grow
+  // past 1x up to CCM_MAX_SCALE instead means it actually fills a consistent,
+  // comfortable fraction of whatever screen it's opened on — the same "scale
+  // to fit" logic Stage.js's own resize() uses for the composited scene
+  // itself, just with an upper bound so it doesn't balloon absurdly large on
+  // an ultra-wide/4K monitor.
+  const CCM_MAX_SCALE = 1.8;
+  function applyFitScale() {
+    const naturalH = root.offsetHeight;
+    if (!naturalH) return;
+    const isMobile = window.innerWidth <= CCM_MOBILE_BREAKPOINT_PX;
+    const designW = isMobile ? CCM_MOBILE_DESIGN_W : CCM_DESIGN_W;
+    const scaleW = (window.innerWidth * CCM_FIT_MARGIN_W) / designW;
+    const scaleH = (window.innerHeight * CCM_FIT_MARGIN_H) / naturalH;
+    root.style.setProperty('--ccm-scale', Math.min(CCM_MAX_SCALE, scaleW, scaleH));
+  }
+  window.addEventListener('resize', applyFitScale);
+  window.addEventListener('orientationchange', applyFitScale);
+  applyFitScale();
+
+  function open() {
+    if (isOpen) return;
+    isOpen = true;
+    applyFitScale(); // re-measure — draft content length affects naturalH
+    backdrop.classList.add('open');
+    requestAnimationFrame(() => {
+      root.classList.add('open');
+      msgInput.focus();
+    });
+  }
+
+  function destroy() {
+    offLang();
+    window.removeEventListener('keydown', onWindowKeydown);
+    window.removeEventListener('resize', applyFitScale);
+    window.removeEventListener('orientationchange', applyFitScale);
+    root.remove();
+    backdrop.remove();
+  }
+
+  return { open, destroy };
+}
+
 function buildOverlay() {
   ensureStyles();
 
@@ -540,6 +924,10 @@ function buildOverlay() {
   // position current without a separate ResizeObserver.
   el._updateChatScrollbar = () => updateScrollbar(messages, thumb);
 
+  // Bottom composer bar is now a click-to-open TRIGGER, not a live text
+  // field (user-requested: clicking it opens the compose modal below, where
+  // name/message/sticker/SC are actually entered) — readOnly so it can still
+  // be focused/clicked but never shows a caret or pops a mobile keyboard.
   const inputbar = document.createElement('div');
   inputbar.className = 'ng-chat-inputbar';
   const inputIcon = document.createElement('span');
@@ -547,8 +935,9 @@ function buildOverlay() {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'ng-chat-input';
-  input.maxLength = 200;
+  input.readOnly = true;
   input.placeholder = INPUT_PLACEHOLDER[DialogueStore.getLang()] ?? INPUT_PLACEHOLDER.en;
+  input.addEventListener('click', () => composeModal.open());
   inputbar.append(inputIcon, input);
   el.appendChild(inputbar);
   // Exposed so the layer's DialogueStore language-change listener can
@@ -556,89 +945,74 @@ function buildOverlay() {
   // anything beyond the single overlay root element.
   el._input = input;
 
-  // Local superchat-tier simulator (spec §8-2) — no real payment platform is
-  // wired up, this just pre-loads a tier's delta for the next send. See
-  // keywordTable.js's header for why this stays local for now.
-  const tierbar = document.createElement('div');
-  tierbar.className = 'ng-chat-tierbar';
-  let selectedTier = null;
-  const tierButtons = SUPERCHAT_TIERS.map((tier) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = `ng-chat-tier-btn sc-${tier.color}`;
-    btn.textContent = `¥${tier.amount.toLocaleString()}`;
-    btn.addEventListener('click', () => setSelectedTier(selectedTier === tier ? null : tier));
-    tierbar.appendChild(btn);
-    return btn;
-  });
-  el.appendChild(tierbar);
-
-  // Recolors every bar in the composer (input row, tier row, toolbar row)
-  // to match whichever tier is armed for the next send, or back to their
-  // plain defaults once cleared/sent. The round input pill gets tinted too,
-  // but with a paler wash of the same hue (see the .ng-chat-input.sc-*
-  // overrides, which win on specificity over the plain .sc-* bar fill) —
-  // full-strength would read as one blended-together blob with the solid
-  // bar sitting right behind it; a lighter tint keeps the pill legible as
-  // its own shape while still carrying the tier color.
-  function setSelectedTier(tier) {
-    selectedTier = tier;
-    tierButtons.forEach((b, i) => b.classList.toggle('active', SUPERCHAT_TIERS[i] === tier));
-    const suffix = tier ? ` sc-${tier.color}` : '';
-    input.className = `ng-chat-input${suffix}`;
-    inputbar.className = `ng-chat-inputbar${suffix}`;
-    tierbar.className = `ng-chat-tierbar${suffix}`;
-    toolbar.className = `ng-chat-toolbar${suffix}`;
-  }
-
   const toolbar = document.createElement('div');
   toolbar.className = 'ng-chat-toolbar';
   const mic = document.createElement('span');
   const send = document.createElement('span');
   send.className = 'send';
+  send.addEventListener('click', () => composeModal.open());
   toolbar.append(mic, send);
   el.appendChild(toolbar);
 
-  const submit = () => {
-    const text = input.value.trim();
-    if (!text) return;
-
-    const kw = matchMessage(text);
-    const delta = sumDeltas(selectedTier?.delta, kw?.delta);
-    if (delta) StatStore.announce(delta);
-
-    if (kw?.id === 'ascension') {
-      const negative = StatStore.get('stress') > ASCENSION_NEGATIVE_THRESHOLD
-        || StatStore.get('darkness') > ASCENSION_NEGATIVE_THRESHOLD;
-      triggerAscensionFlood(negative);
-    }
-
-    // Tier wins if a message happens to also match a keyword — simplest
-    // default given a single `kind` can only carry one highlight.
-    const kind = selectedTier ? `sc-${selectedTier.color}` : kw ? `kw-${kw.id}` : undefined;
-    const row = addRow(messages, text, kind);
-    // A colored SC row is a paid highlight, not a regular chat line — like
-    // 主播女孩重度依賴 (NEEDY GIRL OVERDOSE)'s stream UI, it's meant to stay
-    // pinned on screen for the rest of the broadcast rather than get
-    // scrolled/moderated away. `locked` mirrors keywordTable's 留言不可刪
-    // flag (see its header) — no delete UI exists yet either, this is just
-    // the marker future delete/moderation code should respect.
-    if (selectedTier || kw?.locked) row.dataset.locked = 'true';
-
-    input.value = '';
-    setSelectedTier(null);
-  };
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') submit();
-  });
-  send.addEventListener('click', submit);
-
   // #stage-area has its own click handler (spawns a decorative popup
   // wherever the stage is clicked, see main.js) — without this, clicking
-  // into the input to type would bubble up and spawn one of those on top
-  // of the chat UI on every single click.
+  // into the trigger input would bubble up and spawn one of those right
+  // before/behind the compose modal opening.
   el.addEventListener('mousedown', (e) => e.stopPropagation());
   el.addEventListener('click', (e) => e.stopPropagation());
+
+  // Everything the old inline composer's submit() used to do directly now
+  // runs here instead, as the compose modal's onSend callback — same
+  // StatStore/keyword-match/ascension/Firestore logic, just triggered from
+  // the modal's Send button instead of the bottom bar's Enter/send icon.
+  const composeModal = buildComposeModal({
+    onSend: ({
+      text, rawName, tier, sticker,
+    }) => {
+      // Blank name = the commenter chose not to leave one — falls back to
+      // the localized "Anonymous" label for display, but stays `null` (not
+      // that label) in the Firestore doc so the backend can tell "no name
+      // given" apart from someone literally typing the word "Anonymous".
+      const displayName = rawName || (ANONYMOUS_LABEL[DialogueStore.getLang()] ?? ANONYMOUS_LABEL.en);
+
+      const kw = text ? matchMessage(text) : null;
+      const delta = sumDeltas(tier?.delta, kw?.delta);
+      if (delta) StatStore.announce(delta);
+
+      if (kw?.id === 'ascension') {
+        const negative = StatStore.get('stress') > ASCENSION_NEGATIVE_THRESHOLD
+          || StatStore.get('darkness') > ASCENSION_NEGATIVE_THRESHOLD;
+        triggerAscensionFlood(negative);
+      }
+
+      // Tier wins if a message happens to also match a keyword — simplest
+      // default given a single `kind` can only carry one highlight.
+      const kind = tier ? `sc-${tier.color}` : kw ? `kw-${kw.id}` : undefined;
+      const row = addRow(messages, text, kind, displayName, sticker?.file);
+      // A colored SC row is a paid highlight, not a regular chat line — like
+      // 主播女孩重度依賴 (NEEDY GIRL OVERDOSE)'s stream UI, it's meant to stay
+      // pinned on screen for the rest of the broadcast rather than get
+      // scrolled/moderated away. `locked` mirrors keywordTable's 留言不可刪
+      // flag (see its header) — no delete UI exists yet either, this is just
+      // the marker future delete/moderation code should respect.
+      if (tier || kw?.locked) row.dataset.locked = 'true';
+
+      // Firestore backend (shared/firebase.js) — fire-and-forget: a
+      // misconfigured/offline backend must never block the local chat UI,
+      // saveComment() itself swallows all errors for that reason.
+      saveComment({
+        text,
+        name: rawName || null,
+        scAmount: tier?.amount ?? null,
+        scColor: tier?.color ?? null,
+        sticker: sticker?.id ?? null,
+      });
+    },
+  });
+  // Exposed so ChatBoardLayer.destroy() can tear the modal's own DOM/
+  // listeners down without buildOverlay() needing to return anything beyond
+  // the single overlay root element.
+  el._composeModal = composeModal;
 
   return el;
 }
@@ -663,60 +1037,27 @@ export class ChatBoardLayer extends BaseImageLayer {
       },
     });
 
-    // Pinned to the whole compositor viewport's corner, not the chatboard
-    // sprite's own box — appended straight into #stage-area (not
-    // #stage-world) as a plain sibling after it, same trick #panel-toggle
-    // uses in index.html to sit above the scene and stay excluded from
-    // screenShake.js's shake without needing an explicit z-index.
-    this._hintEl = document.createElement('div');
-    this._hintEl.className = 'ng-corner-hint';
-    document.getElementById('stage-area').appendChild(this._hintEl);
-    // Rebuilds the hint's text on every DialogueStore change, not just
-    // language switches — cheap enough (short string concat) that filtering
-    // to lang-only changes isn't worth the extra bookkeeping.
+    // The keyword hint itself now lives inside the compose modal (see
+    // buildComposeModal's .ccm-msg-hint) — only the trigger bar's own
+    // placeholder needs following here.
     this._offLang = DialogueStore.on('change', (snap) => {
-      this._hintEl.textContent = buildKeywordHint(snap.lang);
       this.el._input.placeholder = INPUT_PLACEHOLDER[snap.lang] ?? INPUT_PLACEHOLDER.en;
+      // The compose modal's own name/message placeholders, labels, and
+      // keyword hint are handled by its own internal DialogueStore
+      // subscription (see buildComposeModal's applyLang) — nothing to
+      // re-apply here.
     });
-    // this.stage.root sits centered in the container and scaled to fit
-    // LOGICAL_W x LOGICAL_H (see Stage.js's resize()) — #stage-area itself
-    // can be a different aspect ratio than 16:9 (panel open/closed, odd
-    // window sizes), which leaves letterbox margins the fixed-pixel corner
-    // position used to ignore entirely. Recomputing the frame's actual
-    // on-screen rect here instead of guessing a flat px offset keeps the
-    // hint anchored to the frame's real corner (not the browser window's)
-    // at any scale, and keeps its font size/margin proportional to the
-    // same scale factor everything else on stage already uses.
-    this._repositionHint = () => {
-      const scale = this.stage.scaleFactor;
-      const compW = LOGICAL_W * scale;
-      const compH = LOGICAL_H * scale;
-      const compRight = this.stage.width / 2 + compW / 2;
-      const compBottom = this.stage.height / 2 + compH / 2;
-      const marginX = HINT_MARGIN_X_LOGICAL * scale;
-      const marginY = HINT_MARGIN_Y_LOGICAL * scale;
-      Object.assign(this._hintEl.style, {
-        right: `${this.stage.width - compRight + marginX}px`,
-        bottom: `${this.stage.height - compBottom + marginY}px`,
-        maxWidth: `${compW - marginX * 2}px`,
-        fontSize: `${HINT_FONT_LOGICAL * scale}px`,
-      });
-    };
-    this._offResize = this.stage.onResize(this._repositionHint);
-    this._repositionHint();
   }
 
   setVisible(visible) {
     super.setVisible(visible);
     this._overlay.setVisible(visible);
-    this._hintEl.style.display = visible ? 'block' : 'none';
   }
 
   destroy() {
     this._overlay.destroy();
     this._offLang();
-    this._offResize();
-    this._hintEl.remove();
+    this.el._composeModal.destroy();
     super.destroy();
   }
 }

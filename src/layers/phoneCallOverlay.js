@@ -38,8 +38,23 @@ const Z_INDEX = 5000; // above every in-game layer/effect, below #rotate-prompt 
 const DESIGN_W = 760;
 const MOBILE_BREAKPOINT_PX = 1024;
 const MOBILE_DESIGN_W = 460;
-const FIT_MARGIN_W = 0.94; // was `94vw`
-const FIT_MARGIN_H = 0.92; // headroom so the popup never touches the top/bottom edge
+// User-requested "縮小通話視窗至覆蓋整個視窗的50%" — these directly bound
+// the popup's on-screen footprint to (at most) this fraction of the
+// viewport's width/height (see applyFitScale()'s math below: whichever axis
+// ends up constraining the fit renders at exactly margin * that axis's
+// viewport size), so 0.5 reads as "the call window covers about half the
+// screen" instead of the old near-full-bleed 0.94/0.92.
+const FIT_MARGIN_W = 0.5;
+const FIT_MARGIN_H = 0.5;
+// Upper bound on how far applyFitScale() below is allowed to grow the modal
+// past its authored 1x size (user-reported: "通話視窗的字也大一些" — the fit
+// formula used to also cap at Math.min(1, ...), which pinned the whole modal
+// to its DESIGN_W/MOBILE_DESIGN_W size on any viewport roomier than that,
+// reading small on any normal-or-larger monitor. Letting it scale up to this
+// bound instead makes it fill a consistent, comfortable fraction of whatever
+// screen it opens on, the same fix applied to chat.chatboardLayer.js's own
+// compose modal (see that file's CCM_MAX_SCALE).
+const MAX_SCALE = 1.8;
 
 // Same lang set (and the same saved/detected choice — see DialogueStore's
 // own loadLang) the loading screen's picker and Frame 1's dialogue bubbles
@@ -142,7 +157,7 @@ function injectStyle() {
     }
     #phone-call-overlay .pco-name {
       margin-top: 12px; font-weight: 700; letter-spacing: .03em;
-      font-size: 19px; color: #6a3f7a;
+      font-size: 24px; color: #6a3f7a;
       text-shadow: 0 1px 0 rgba(255,255,255,0.5);
     }
     #phone-call-overlay .pco-actions {
@@ -151,7 +166,7 @@ function injectStyle() {
       padding: 0 8% 6px;
     }
     #phone-call-overlay .pco-action { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-    #phone-call-overlay .pco-action-label { font-size: 15px; font-weight: 700; color: #6a3f7a; }
+    #phone-call-overlay .pco-action-label { font-size: 18px; font-weight: 700; color: #6a3f7a; }
     #phone-call-overlay .pco-btn {
       width: 74px; height: 74px;
       border-radius: 50%; border: none; cursor: pointer;
@@ -244,7 +259,7 @@ function applyFitScale() {
   const designW = isMobile ? MOBILE_DESIGN_W : DESIGN_W; // must track the `@media` block above
   const scaleW = (window.innerWidth * FIT_MARGIN_W) / designW;
   const scaleH = (window.innerHeight * FIT_MARGIN_H) / naturalH;
-  root.style.setProperty('--pco-scale', Math.min(1, scaleW, scaleH));
+  root.style.setProperty('--pco-scale', Math.min(MAX_SCALE, scaleW, scaleH));
 }
 
 function ensureRoot() {
