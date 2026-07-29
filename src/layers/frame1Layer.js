@@ -301,7 +301,11 @@ function ensureStyles() {
       clip-path: ${pixelCornerClip('--ng-tcu', 8)};
       filter: drop-shadow(calc(var(--ng-tcu) * 4) calc(var(--ng-tcu) * 4) 0 rgba(20, 8, 40, 0.55));
       padding: calc(var(--ng-tcu) * 15) calc(var(--ng-tcu) * 22);
-      cursor: none; /* see .ng-dlg-bubble's cursor:none above */
+      cursor: none !important; /* see .ng-dlg-bubble's cursor:none above — !important plus the
+        :hover/:active redeclarations below are belt-and-suspenders against the native arrow
+        flashing back in on hover once this element's transform/filter start animating (only
+        showed up in production, never on a local dev-server run, so it reads as a repaint-timing
+        edge case rather than something a plain unqualified rule failed to cover) */
       backdrop-filter: blur(9px);
       -webkit-backdrop-filter: blur(9px);
       transition: background .15s ease, transform .1s ease, filter .1s ease;
@@ -310,10 +314,12 @@ function ensureStyles() {
       background: linear-gradient(160deg, rgba(206, 156, 255, 0.8), rgba(166, 108, 236, 0.84));
       transform: translate(calc(var(--ng-tcu) * -1), calc(var(--ng-tcu) * -1));
       filter: drop-shadow(calc(var(--ng-tcu) * 5) calc(var(--ng-tcu) * 5) 0 rgba(20, 8, 40, 0.55));
+      cursor: none !important;
     }
     .ng-dlg-choice-btn:active {
       transform: translate(calc(var(--ng-tcu) * 4), calc(var(--ng-tcu) * 4));
       filter: none;
+      cursor: none !important;
     }
   `;
   document.head.appendChild(style);
