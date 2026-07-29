@@ -1,4 +1,5 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
+import { EDIT_MODE } from '../core/editMode.js';
 
 // A custom cursor has to sit in front of literally everything (Pixi sprites,
 // lottie, even the retro filter) or it'd be occluded by the very thing it's
@@ -92,7 +93,7 @@ export class PixelCursorLayer extends BaseIframeLayer {
     this._isMobile = this._computeIsMobile();
     const shouldShow = this.visible && !this._isMobile;
     this.el.style.display = shouldShow ? 'block' : 'none';
-    this.toggleBtn.style.display = shouldShow ? 'block' : 'none';
+    this.toggleBtn.style.display = (shouldShow && EDIT_MODE) ? 'block' : 'none'; // dev-only control, see src/core/editMode.js
   }
 
   _forwardPointer(e) {

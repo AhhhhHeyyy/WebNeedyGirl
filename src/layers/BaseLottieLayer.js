@@ -1,4 +1,5 @@
 import { LOGICAL_W, LOGICAL_H } from '../core/Stage.js';
+import { DragTransform } from '../core/DragTransform.js';
 
 // Lottie plays in its own <div>/canvas (lottie-web's own renderer), kept as a
 // separate DOM context stacked via CSS z-index rather than folded into the
@@ -67,7 +68,11 @@ export class BaseLottieLayer {
 
   _bindDrag() {
     this.el.addEventListener('pointerdown', (e) => {
-      if (this.locked) return;
+      // Own separate CSS-transform drag implementation (Lottie isn't a Pixi
+      // sprite, DragTransform.js doesn't apply here) — gated on the same
+      // static flag so Lottie layers respect edit mode too (see
+      // src/core/editMode.js); this used to be missed entirely.
+      if (this.locked || !DragTransform.editEnabled) return;
       const start = { x: e.clientX, y: e.clientY, tx: this.transform.x, ty: this.transform.y };
       const move = (ev) => {
         const s = this.stage.scaleFactor;

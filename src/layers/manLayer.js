@@ -1,4 +1,5 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
+import { EDIT_MODE } from '../core/editMode.js';
 
 // The man popup is meant to read as a surprise sitting on top of the whole
 // scene, not a full-viewport background sitting behind every Pixi/Lottie
@@ -38,12 +39,13 @@ export class ManLayer extends BaseIframeLayer {
       this.el.style.pointerEvents = this._panelOpen ? 'auto' : 'none';
       this.el.contentWindow.postMessage({ type: 'ng-man-toggle' }, window.location.origin);
     };
+    if (!EDIT_MODE) this.toggleBtn.style.display = 'none'; // dev-only control, see src/core/editMode.js
     this.el.parentElement.appendChild(this.toggleBtn);
   }
 
   setVisible(visible) {
     super.setVisible(visible);
-    this.toggleBtn.style.display = visible ? 'block' : 'none';
+    this.toggleBtn.style.display = (visible && EDIT_MODE) ? 'block' : 'none';
     if (!visible) {
       this._panelOpen = false;
       this.el.style.pointerEvents = 'none';

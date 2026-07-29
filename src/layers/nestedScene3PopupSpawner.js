@@ -194,6 +194,11 @@ export async function spawnNestedScene3Popup(x, y, { stage, manager, lottieConta
     scale: templateTransform.scaleX, rotation: templateTransform.rotation,
     width: 512, height: 512, loop: false,
   });
+  // Permanently locked (not just gated by editMode.js's EDIT_MODE) — this is
+  // a throwaway window that plays once and destroys itself, dragging it was
+  // never the point even for panel/edit-mode users, unlike the persistent
+  // Lottie assets BaseLottieLayer._bindDrag() otherwise serves.
+  win.setLocked(true);
 
   // Pop-ups aren't draggable, so the window's transform never changes after
   // spawning — this only needs to run once, unlike the live-tracking sync()

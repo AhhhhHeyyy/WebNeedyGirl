@@ -1,4 +1,5 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
+import { EDIT_MODE } from '../core/editMode.js';
 
 // Same "pin z-index to a fixed constant, ignore the layer-order index the
 // manager would otherwise assign" trick as retroFilterLayer.js — this is a
@@ -74,6 +75,7 @@ export class TvGlitchLayer extends BaseIframeLayer {
       this._applyBlend();
       this.el.contentWindow.postMessage({ type: 'ng-tvglitch-toggle' }, window.location.origin);
     };
+    if (!EDIT_MODE) this.toggleBtn.style.display = 'none'; // dev-only control, see src/core/editMode.js
     this.el.parentElement.appendChild(this.toggleBtn);
   }
 
@@ -83,7 +85,7 @@ export class TvGlitchLayer extends BaseIframeLayer {
 
   setVisible(visible) {
     super.setVisible(visible);
-    this.toggleBtn.style.display = visible ? 'block' : 'none';
+    this.toggleBtn.style.display = (visible && EDIT_MODE) ? 'block' : 'none';
     if (!visible) {
       this._panelOpen = false;
       this.el.style.pointerEvents = 'none';

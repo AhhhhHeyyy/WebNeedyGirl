@@ -1,4 +1,5 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
+import { EDIT_MODE } from '../core/editMode.js';
 
 // holographic is paired specifically with the "frame1" image layer, but only
 // the SHADER needs to be clipped to Frame 1's on-screen box/silhouette — the
@@ -61,6 +62,7 @@ export class HolographicLayer extends BaseIframeLayer {
       this.setZIndex(); // re-evaluate now that _panelOpen changed (see PANEL_OPEN_Z above)
       this.el.contentWindow?.postMessage({ type: 'ng-holo-toggle' }, window.location.origin);
     };
+    if (!EDIT_MODE) this.toggleBtn.style.display = 'none'; // dev-only control, see src/core/editMode.js
     this.el.parentElement.appendChild(this.toggleBtn);
 
     this._offManagerChange = this.manager.onChange(() => this._reposition());
@@ -138,7 +140,7 @@ export class HolographicLayer extends BaseIframeLayer {
 
   setVisible(visible) {
     super.setVisible(visible);
-    this.toggleBtn.style.display = visible ? 'block' : 'none';
+    this.toggleBtn.style.display = (visible && EDIT_MODE) ? 'block' : 'none';
     if (!visible) {
       this._panelOpen = false;
       this.el.style.pointerEvents = 'none';

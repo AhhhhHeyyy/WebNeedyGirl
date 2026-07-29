@@ -1,4 +1,5 @@
 import { BaseIframeLayer } from './BaseIframeLayer.js';
+import { EDIT_MODE } from '../core/editMode.js';
 
 // A camera-lens-style screen filter (scanlines/vignette/grain/flicker) is
 // the opposite of what BaseIframeLayer assumes for "effect" layers: instead
@@ -43,12 +44,13 @@ export class RetroFilterLayer extends BaseIframeLayer {
       this.el.style.pointerEvents = this._panelOpen ? 'auto' : 'none';
       this.el.contentWindow.postMessage({ type: 'ng-retrofilter-toggle' }, window.location.origin);
     };
+    if (!EDIT_MODE) this.toggleBtn.style.display = 'none'; // dev-only control, see src/core/editMode.js
     this.el.parentElement.appendChild(this.toggleBtn);
   }
 
   setVisible(visible) {
     super.setVisible(visible);
-    this.toggleBtn.style.display = visible ? 'block' : 'none';
+    this.toggleBtn.style.display = (visible && EDIT_MODE) ? 'block' : 'none';
     if (!visible) {
       this._panelOpen = false;
       this.el.style.pointerEvents = 'none';
