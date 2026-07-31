@@ -176,6 +176,13 @@ function injectStyle() {
     }
     #phone-call-overlay .pco-avatar img {
       width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated;
+      /* Same fix as chat.chatboardLayer.js's .ccm-sticker-btn img: <img> is
+         a replaced element whose native affordances can win the OS cursor
+         resolution over an inherited cursor:none in a way a plain <div>
+         never does — pointer-events:none removes it from hit-testing so
+         hovering it always resolves to .pco-avatar (non-interactive either
+         way, nothing else changes). */
+      pointer-events: none;
     }
     #phone-call-overlay .pco-name {
       margin-top: 12px; font-weight: 700; letter-spacing: .03em;

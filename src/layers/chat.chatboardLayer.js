@@ -707,7 +707,19 @@ function ensureComposeModalStyle() {
       display: flex; align-items: center; justify-content: center;
       cursor: none !important; /* see .ccm-titlebar's cursor:none above */
     }
-    #ng-ccm-modal .ccm-sticker-btn img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; }
+    #ng-ccm-modal .ccm-sticker-btn img {
+      width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;
+      /* User-reported: the native cursor still showed while hovering
+         directly over the <img>, even though its computed cursor value was
+         already "none" (inherited from .ccm-sticker-btn) — <img> is a
+         replaced element with its own native affordances (drag-out, etc.)
+         that can win the OS cursor resolution over an inherited cursor:none
+         in a way a plain <div> never hits. pointer-events:none removes it
+         from hit-testing entirely, so hovering its visual area always
+         resolves to .ccm-sticker-btn itself (the click handler already
+         lives there, not on this <img>, so nothing else changes). */
+      pointer-events: none;
+    }
     /* Selection ring, not a fill swap — same reasoning as chat's own
        .ng-chat-tier-btn.active, just re-declared here since this modal's
        markup lives outside .ng-chat-overlay's own stylesheet scope. */
