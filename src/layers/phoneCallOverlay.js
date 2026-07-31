@@ -7,14 +7,18 @@
 // Accepting navigates to call.html (a separate, standalone page — the
 // "answered call" screen with its own live front-camera preview, which needs
 // its own getUserMedia prompt and doesn't belong inside this SPA's Pixi/
-// layer stack). Declining just closes the modal and leaves the caller right
-// back where they were.
+// layer stack). Declining (the red hang-up button, or the titlebar close
+// button — both route through onDecline()) closes the modal and docks an
+// affection penalty, same as ignoring/rejecting a call would upset someone
+// in real life (user-requested).
 
 import { DialogueStore, VALID_LANGS } from '../core/DialogueStore.js';
+import { StatStore } from '../core/StatStore.js';
 
 const AVATAR_URL = 'Icon_jine_ame.png';
 const ANSWERED_PAGE_URL = 'call.html';
 const Z_INDEX = 5000; // above every in-game layer/effect, below #rotate-prompt (9999) and #loading-screen (10000)
+const DECLINE_AFFECTION_PENALTY = 20; // user-requested: hanging up on a call costs affection
 
 // Fixed "design" width the modal is authored at (was the 760px cap inside the
 // old `min(94vw, 760px)` CSS). --pco-scale below is computed the same way
@@ -329,6 +333,11 @@ function onAccept() {
 }
 
 function onDecline() {
+  // announce() (not apply()) — this is a single player-caused event (the
+  // player clicking hang-up/close), same category as a sticker click or
+  // dialogue choice, so it should also flash the "-20" stat toast like
+  // those do (see StatStore.js's announce() doc comment).
+  StatStore.announce({ affection: -DECLINE_AFFECTION_PENALTY });
   hide();
 }
 

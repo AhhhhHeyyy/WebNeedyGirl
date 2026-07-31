@@ -85,6 +85,17 @@ export class PixelCursorLayer extends BaseIframeLayer {
     // track the pointer, so the real position is sampled here in the parent
     // and forwarded in (mirrors holographicLayer.js's _forwardPointer).
     this.el.style.pointerEvents = 'none';
+
+    // Tells #loading-screen (index.html) it's now safe to blank the real OS
+    // cursor in favor of this decorative one — before this fires, the real
+    // arrow stays visible there instead of vanishing into nothing (see that
+    // rule's own comment for the bug this fixes). 'load' covers this
+    // iframe's own html/css/js; that's the earliest point script.js is even
+    // running to start loading cursor.webm and forwarding pointer positions,
+    // so it's the best signal available from out here without a dedicated
+    // postMessage handshake for "first frame actually painted".
+    this.el.addEventListener('load', () => { document.body.classList.add('ng-cursor-ready'); });
+
     this.manager = opts.manager;
     this._panelOpen = false;
     this._finePointerMedia = window.matchMedia ? window.matchMedia(FINE_POINTER_QUERY) : null;
