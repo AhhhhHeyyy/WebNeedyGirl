@@ -13,6 +13,69 @@
      inversion algorithm — an explicit background alone doesn't stop that. -->
 <meta name="color-scheme" content="light only">
 <title>Needy girl overdose fan-made website</title>
+<script>
+// Last-resort safety net for boot failures — registered before anything else
+// in <head> so it can catch even a CDN <script> (pixi.js/lottie-web/etc.)
+// failing to load over a flaky mobile connection, plus any synchronous throw
+// at module top-level later (e.g. Stage construction). Without this, such a
+// failure leaves #loading-screen sitting at z-index 10000 forever with zero
+// on-screen explanation — exactly the "stuck on the loading screen, never
+// gets in" symptom some iOS visitors report, and with no console access on a
+// phone there's no way for them to tell us WHY it's stuck.
+// capture:true (not just bubble) matters here specifically for <script src>
+// network failures: those fire a non-bubbling 'error' Event on the <script>
+// element itself, which only a capturing listener on an ancestor (window)
+// ever observes — a plain bubble-phase window.onerror only sees script
+// *execution* errors (e.g. "PIXI is not defined"), not the network failure
+// that caused them. Must be registered before those CDN <script> tags below,
+// not after — a classic (non-async/defer) <script src> blocks parsing until
+// it loads-or-fails, so a listener added after it would already be too late
+// to observe that particular tag's own failure.
+// document.body doesn't exist yet this early (still mid-<head>), so the
+// actual DOM work is deferred to DOMContentLoaded if needed.
+// Gated on #loading-screen still being present at render time: every failure
+// main.js's own boot() already knows how to handle (missing manifest.json,
+// one bad layer) is caught locally and never reaches here; anything that
+// DOES reach window while the loading screen is still up is by definition
+// something boot() never got a chance to handle. Once boot() finishes and
+// removes #loading-screen, this stops intercepting — runtime errors during
+// actual play should just log to console as normal, not hijack the screen.
+(function () {
+  var shown = false;
+  function render(detail) {
+    if (shown) return;
+    var loading = document.getElementById('loading-screen');
+    if (!loading) return; // boot already succeeded — a later runtime error, not a boot failure
+    shown = true;
+    loading.remove();
+    var el = document.createElement('div');
+    el.id = 'boot-error';
+    el.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+      'background:rgba(20,10,30,0.92);color:#ffdce8;padding:20px 28px;border-radius:12px;' +
+      'font-family:monospace;font-size:13px;white-space:pre-wrap;max-width:80vw;' +
+      'line-height:1.6;text-align:center;z-index:9999;';
+    el.textContent = '網頁初始化失敗，請截圖回報：\n' + detail;
+    document.body.appendChild(el);
+  }
+  function showFatalBootError(detail) {
+    if (shown) return;
+    if (document.body) render(detail);
+    else document.addEventListener('DOMContentLoaded', function () { render(detail); }, { once: true });
+  }
+  window.addEventListener('error', function (e) {
+    var target = e.target;
+    if (target && target !== window && target.tagName) {
+      showFatalBootError('資源載入失敗: ' + (target.src || target.href || target.tagName));
+    } else {
+      showFatalBootError((e.error && (e.error.stack || e.error.message)) || e.message || String(e));
+    }
+  }, true);
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e.reason;
+    showFatalBootError((r && (r.stack || r.message)) || String(r));
+  });
+})();
+</script>
 <script src="shared/device-perf.js"></script>
 <script src="shared/state-sync.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>

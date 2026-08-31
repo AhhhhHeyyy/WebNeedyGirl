@@ -119,7 +119,20 @@ window.__needyGirl = { stage, manager }; // dev-console debugging aid only
 // Pays the "spin up a WebGL context" cost for Nested Scene 3 pop-ups here,
 // while the loading screen is still up blocking input anyway, instead of on
 // whichever click(s) first need a renderer the pool doesn't have yet.
-prewarmRendererPool();
+//
+// On mobile this is capped to 1 instead of the full MAX_CONCURRENT_POPUPS
+// (4) pool: 4 extra antialiased WebGL contexts created synchronously here,
+// stacked on top of the main Stage + holographic WebGL contexts and however
+// many images/iframes boot() is about to load all at once via Promise.all,
+// piles onto exactly the kind of startup memory/GPU spike that reliably
+// crashes iOS Safari's WebContent process ~1-2s into load (a native "Safari
+// cannot open this page" — a WebKit process kill, not a catchable JS error,
+// so index.html's global error overlay never sees it either). Desktop has
+// the GPU/RAM headroom to eat that cost upfront; mobile only prewarms 1 and
+// lets acquireRenderer()'s own fallback (`?? new PIXI.Renderer(...)`)
+// construct any further ones lazily on first actual use instead — trading a
+// small one-time stutter on a later click for not crashing on load.
+prewarmRendererPool(window.innerWidth <= 1024 ? 1 : undefined);
 
 // Every layer type owns a separate DOM/rendering context (iframe, Pixi
 // canvas, lottie-web canvas), so they can only stack as whole blocks, not
@@ -317,6 +330,28 @@ async function boot() {
     ...(manifest.groups || []).map(entry => ({ kind: 'group', entry })),
   ];
 
+  // Loading every request via a single unbounded Promise.all fires every
+  // image decode plus every effect iframe's own boot (7 of them, each
+  // spinning up its own canvas/WebGL context) within the same instant —
+  // fine on desktop, but on iOS Safari this peak concurrent decode/GPU-setup
+  // burst is exactly what's been reliably crashing the WebContent process
+  // ~1-2s into load (a native "Safari cannot open this page" — a WebKit
+  // process kill, not a catchable JS error, so index.html's global error
+  // overlay never sees it either). Capping how many requests are in flight
+  // at once spreads that same total work over a slightly longer wall-clock
+  // window instead of one memory/GPU spike, without changing what
+  // eventually loads or the final "100%". Desktop keeps the old unbounded
+  // behavior — it has the headroom and this was never an issue there.
+  const LOAD_CONCURRENCY = window.innerWidth <= 1024 ? 3 : Infinity;
+  async function loadWithConcurrency(items, limit, worker) {
+    if (!isFinite(limit)) { await Promise.all(items.map(worker)); return; }
+    let next = 0;
+    async function runNext() {
+      while (next < items.length) await worker(items[next++]);
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, runNext));
+  }
+
   // #loading-screen stays up (and, being the topmost fixed element, blocks
   // every pointer event on the scene) for this entire Promise.all, so the
   // percentage below is the only thing users see move until the scene is
@@ -331,12 +366,12 @@ async function boot() {
     }
   };
 
-  await Promise.all(requests.map(({ kind, entry }) =>
+  await loadWithConcurrency(requests, LOAD_CONCURRENCY, ({ kind, entry }) =>
     createLayer(kind, entry)
       .then(layers => layers.forEach(l => manager.add(l)))
       .catch(err => console.error(`Failed to load layer "${entry.id}":`, err))
       .finally(reportProgress)
-  ));
+  );
 
   // Nested Scene 3 (and every pop-up spawned from its template, see
   // nestedScene3PopupSpawner.js) must always render behind Stickerboard
