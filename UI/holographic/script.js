@@ -9,7 +9,17 @@ holoClip.style.webkitMaskImage = 'url("../Frame 1.png")';
 
 /* ── WebGL ── */
 const canvas = document.getElementById('gl');
-const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: true });
+// Neither flag below is free on iOS: preserveDrawingBuffer forces the driver
+// to keep a persistent, non-discardable copy of the drawing buffer instead
+// of the default swap-and-reuse behavior, and antialias allocates an MSAA
+// renderbuffer that roughly doubles this canvas's own backing memory — both
+// on the SAME shared GPU/canvas memory budget every other canvas/WebGL
+// context on the page draws from (see Stage.js's own antialias:false for the
+// same tradeoff already made there). preserveDrawingBuffer only ever existed
+// for the dev-only "save PNG" button further down this file (#save-btn,
+// canvas.toDataURL()) — a panel regular visitors never see (see index.html's
+// EDIT_MODE gating) — so it's pure cost with zero benefit to players.
+const gl = canvas.getContext('webgl', { antialias: false });
 if (gl) gl.getExtension('OES_standard_derivatives');
 if (!gl) { document.body.innerHTML = '<p style="padding:2rem">Your browser does not support WebGL.</p>'; }
 

@@ -323,8 +323,27 @@ async function boot() {
     StatStore.reset();
   };
 
+  // pixelCursorLayer.js's own _computeIsMobile() already keeps the cursor
+  // permanently display:none on touch/narrow devices (there's no real mouse
+  // to stand in for) — but that's a CSS-only hide happening AFTER the iframe
+  // (its own JS engine, DOM, and a full-viewport 2D canvas sized to
+  // innerWidth*dpr) has already fully loaded. On a platform that's crashing
+  // from resource exhaustion, paying that entire cost for a feature that
+  // will be invisible 100% of the time is pure waste. Skipping the request
+  // outright — same isMobile signal pixelCursorLayer.js itself uses — means
+  // the effect literally never exists on mobile instead of existing-but-
+  // hidden. Trade-off: pixelCursorLayer.js's own live resize/pointer-capability
+  // re-check (e.g. a Bluetooth mouse pairing with a tablet) no longer
+  // applies, since there's no layer left to react — an acceptable loss for a
+  // decorative desktop-only effect against a platform that's currently
+  // failing to load at all.
+  const skipsMobile = new Set(['pixelCursor']);
+  const isMobileDevice = window.innerWidth <= 1024 ||
+    (window.matchMedia && !window.matchMedia('(pointer: fine) and (hover: hover)').matches);
   const requests = [
-    ...manifest.effects.map(entry => ({ kind: 'effect', entry })),
+    ...manifest.effects
+      .filter(entry => !(isMobileDevice && skipsMobile.has(entry.id)))
+      .map(entry => ({ kind: 'effect', entry })),
     ...manifest.images.map(entry => ({ kind: 'image', entry })),
     ...manifest.lottie.map(entry => ({ kind: 'lottie', entry })),
     ...(manifest.groups || []).map(entry => ({ kind: 'group', entry })),
