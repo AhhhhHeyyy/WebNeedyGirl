@@ -13,7 +13,16 @@ import { BaseImageLayer } from './BaseImageLayer.js';
 // holding the individual window sprites is the drag/scale handle; the child
 // sprites themselves are decorative and non-interactive.
 const MIN_COUNT = 2;
-const MAX_COUNT = 5;
+// MAX_COUNT also fixes how many independent <video> decoders EyeStackLayer
+// prewarms up front (see create() below) — every one of them loads the SAME
+// eye-screen.webm source concurrently, purely so each window in a cascade
+// can blink on its own timeline. That's 5 parallel video decode sessions
+// competing for however many hardware decoder slots the device actually
+// has, stacked on top of everything else boot() is already loading at once
+// — real weight on mobile GPU/memory budgets for a purely decorative
+// cascade size. Capped lower on mobile than desktop; MIN_COUNT stays the
+// floor either way so the effect never fully disappears.
+const MAX_COUNT = window.innerWidth <= 1024 ? 3 : 5;
 // Per-step diagonal offset, as a fraction of the texture's own width, so the
 // cascade scales sensibly no matter how the user resizes this layer in the
 // panel: offset = (SPACING_RATIO_K / count) * texture.width.
