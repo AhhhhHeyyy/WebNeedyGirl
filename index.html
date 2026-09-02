@@ -70,9 +70,24 @@
       showFatalBootError((e.error && (e.error.stack || e.error.message)) || e.message || String(e));
     }
   }, true);
+  // Deliberately NOT wired to showFatalBootError like the 'error' listener
+  // above. First real-world iOS test of this file caught exactly why: pixi.js
+  // (dist/pixi.min.js's VideoResource, wrapping eye.eyeLayer.js's <video> via
+  // `PIXI.Texture.from(videoEl)`) makes its OWN internal, unguarded
+  // `video.play()` call to prime the first frame — separate from and
+  // unreachable by eye.eyeLayer.js's own already-present `.catch(() => {})`
+  // on ITS play() call — and that internal call rejected on iOS (detached
+  // <video>/autoplay-policy quirks vary by iOS version). eye.eyeLayer.js was
+  // already designed to tolerate a failed video gracefully (falls back to a
+  // plain window with no blink, see EyeBlinkClip.load()'s "degrades to the
+  // plain window look" comment) — this rejection was harmless and silent
+  // before this overlay existed. Treating every unhandled rejection as fatal
+  // turned that harmless pre-existing quirk into a full page block, which is
+  // strictly worse than the boot() teardown this whole file exists to guard
+  // against. Left logging to console (matching pre-overlay behavior) so it's
+  // still visible to anyone with real devtools access, just not blocking.
   window.addEventListener('unhandledrejection', function (e) {
-    var r = e.reason;
-    showFatalBootError((r && (r.stack || r.message)) || String(r));
+    console.error('Unhandled rejection (non-fatal):', e.reason);
   });
 })();
 </script>
